@@ -40,7 +40,7 @@ const Text = ({
   handleInputChange,
 }: TextProps) => (
   <div className='flex flex-col gap-3 border-b border-primary-grey-200 px-5 py-3'>
-    <h3 className='text-[10px] uppercase'>Text</h3>
+    <h3 className='text-[10px] uppercase'>Texto</h3>
 
     <div className='flex flex-col gap-3'>
       {RenderSelect({
@@ -100,7 +100,7 @@ const RenderSelect = ({
       <SelectValue
         placeholder={
           config.property === "fontFamily"
-            ? "Choose a font"
+            ? "Escolha uma fonte"
             : config.property === "fontSize"
               ? "30"
               : "Semibold"
