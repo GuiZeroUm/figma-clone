@@ -10,13 +10,7 @@ const nextConfig = {
     return config;
   },
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "liveblocks.io",
-        port: "",
-      },
-    ],
+    domains: ["liveblocks.io"],
   },
   typescript: {
     ignoreBuildErrors: true,
