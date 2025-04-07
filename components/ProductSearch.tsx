@@ -13,6 +13,7 @@ type Product = {
   descricao: string;
   codauxiliar: string;
   link_imagem: string;
+  vl_oferta: number;
 };
 
 const ProductSearch = () => {
@@ -62,7 +63,9 @@ const ProductSearch = () => {
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
 
-        const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const jsonData = XLSX.utils.sheet_to_json(sheet, {
+          header: 1,
+        }) as Array<Array<any>>;
         console.log("Extracted data:", jsonData);
 
         if (!jsonData.length || !Array.isArray(jsonData[0])) {
@@ -72,9 +75,22 @@ const ProductSearch = () => {
 
         // Look for barcode column using various possible names
         const headers = jsonData.find(
-          (row) => row.includes("Cód.Barra") || row.includes("Código de Barras")
-        ) as string[];
+          (row) =>
+            Array.isArray(row) &&
+            row.some(
+              (cell) =>
+                typeof cell === "string" &&
+                (cell.includes("Cód.Barra") ||
+                  cell.includes("Código de Barras"))
+            )
+        );
+
         console.log("Headers found:", headers);
+
+        if (!headers || !Array.isArray(headers)) {
+          setImportStatus("Erro: Cabeçalho não encontrado no arquivo");
+          return;
+        }
 
         const possibleBarcodeColumns = [
           "cód.barra",
@@ -90,7 +106,7 @@ const ProductSearch = () => {
         let barcodeIndex = -1;
 
         headers.forEach((header, index) => {
-          const normalizedHeader = header.toString().trim().toLowerCase();
+          const normalizedHeader = String(header).trim().toLowerCase();
           if (
             possibleBarcodeColumns.some((col) => normalizedHeader.includes(col))
           ) {
@@ -352,10 +368,15 @@ const ProductSearch = () => {
                     <h3 className='text-primary-grey-500 line-clamp-2 min-h-[40px] text-sm font-semibold'>
                       {product.descricao}
                     </h3>
-                    <div className='mt-2 flex items-center'>
+                    <div className='mt-2 flex items-center justify-between'>
                       <span className='rounded-full bg-primary-green/20 px-2 py-0.5 text-xs font-medium text-primary-green'>
                         Cód: {product.codauxiliar}
                       </span>
+                      {product.vl_oferta > 0 && (
+                        <span className='bg-primary-blue/20 text-primary-blue rounded-full px-2 py-0.5 text-xs font-medium'>
+                          Oferta: R$ {product.vl_oferta.toFixed(2)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}
