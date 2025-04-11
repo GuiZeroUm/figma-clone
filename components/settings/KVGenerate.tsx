@@ -3,21 +3,40 @@ import { fabric } from "fabric";
 import { v4 as uuidv4 } from "uuid";
 import { toPng } from "html-to-image";
 import { removeBackgroundFromImageFile } from "remove.bg";
+import { Plus } from "lucide-react";
 
 import KVModal from "./kv/KVModal";
 import KVForm from "./kv/KVForm";
 import KVCanvas from "./kv/KVCanvas";
 import KVElementEditor from "./kv/KVElementEditor";
+import KVGridButton from "./kv/KVGridButton";
+import KVGridSystem from "./kv/KVGridSystem";
 import {
   FormData,
   ElementStyles,
   ExtendedFabricObject,
   ExtendedFabricText,
 } from "../../types/kv";
+import KVTemplates from "./kv/KVTemplates";
 
 interface KVGenerateProps {
   fabricRef: React.MutableRefObject<fabric.Canvas>;
   syncShapeInStorage: (shape: fabric.Object) => void;
+}
+
+interface KVFormData {
+  productName: string;
+  productDescription: string;
+  productPrice: string;
+  productImage: File | null;
+}
+
+interface KVTemplate {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  elements: fabric.Object[];
 }
 
 const CANVAS_WIDTH = 1080;
@@ -31,12 +50,13 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
   const editorCanvasRef = useRef<HTMLCanvasElement>(null);
   const [editorCanvas, setEditorCanvas] = useState<fabric.Canvas | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isGridModalOpen, setIsGridModalOpen] = useState(false);
 
-  const [formData, setFormData] = useState<FormData>({
-    background: null,
+  const [formData, setFormData] = useState<KVFormData>({
+    productName: "",
+    productDescription: "",
+    productPrice: "",
     productImage: null,
-    description: "",
-    price: "",
   });
 
   const [selectedElement, setSelectedElement] = useState<fabric.Object | null>(
@@ -66,6 +86,7 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
   });
 
   const [isRemovingBackground, setIsRemovingBackground] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const handleCanvasReady = (canvas: fabric.Canvas) => {
     setEditorCanvas(canvas);
@@ -119,6 +140,44 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
 
     canvas.on("selection:cleared", () => {
       setSelectedElement(null);
+    });
+
+    // Configurar o canvas para garantir que a imagem de background seja exibida corretamente
+    canvas.on("after:render", () => {
+      // Verificar se há uma imagem de background e garantir que ela seja exibida corretamente
+      if (canvas.backgroundImage) {
+        const bgImage = canvas.backgroundImage as fabric.Image;
+        if (bgImage && bgImage.width && bgImage.height) {
+          // Verificar se a imagem está sendo cortada
+          const scale = Math.max(
+            CANVAS_WIDTH / bgImage.width,
+            CANVAS_HEIGHT / bgImage.height
+          );
+
+          // Se a escala atual for diferente da escala calculada, atualizar
+          if (Math.abs(bgImage.scaleX! - scale) > 0.01) {
+            bgImage.set({
+              scaleX: scale,
+              scaleY: scale,
+              left: CANVAS_WIDTH / 2,
+              top: CANVAS_HEIGHT / 2,
+              originX: "center",
+              originY: "center",
+            });
+            canvas.renderAll();
+          }
+        }
+      }
+    });
+
+    // Adicionar um listener para redimensionamento da janela
+    window.addEventListener("resize", () => {
+      if (canvas) {
+        // Forçar uma renderização completa após o redimensionamento
+        setTimeout(() => {
+          canvas.renderAll();
+        }, 100);
+      }
     });
   };
 
@@ -192,14 +251,16 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
           if (!editorCanvas) return;
 
           if (type === "background") {
-            const scale = Math.max(
+            // Calcular a escala para cobrir todo o canvas mantendo a proporção
+            const scaleToFit = Math.max(
               CANVAS_WIDTH / img.width!,
               CANVAS_HEIGHT / img.height!
             );
 
+            // Aplicar a escala e centralizar
             img.set({
-              scaleX: scale,
-              scaleY: scale,
+              scaleX: scaleToFit,
+              scaleY: scaleToFit,
               left: CANVAS_WIDTH / 2,
               top: CANVAS_HEIGHT / 2,
               originX: "center",
@@ -207,26 +268,21 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
               selectable: true,
               crossOrigin: "anonymous",
             });
+
+            // Definir como background
             editorCanvas.setBackgroundImage(
               img,
-              editorCanvas.renderAll.bind(editorCanvas),
-              {
-                scaleX: scale,
-                scaleY: scale,
-                left: CANVAS_WIDTH / 2,
-                top: CANVAS_HEIGHT / 2,
-                originX: "center",
-                originY: "center",
-                crossOrigin: "anonymous",
-              }
+              editorCanvas.renderAll.bind(editorCanvas)
             );
           } else {
+            // Lógica para imagem do produto
             const scale = Math.min(
               (CANVAS_WIDTH * 0.7) / img.width!,
               (CANVAS_HEIGHT * 0.4) / img.height!
             );
 
-            img.set({
+            const extendedImg = img as ExtendedFabricObject;
+            extendedImg.set({
               left: CANVAS_WIDTH / 2,
               top: CANVAS_HEIGHT * 0.45,
               originX: "center",
@@ -236,9 +292,10 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
               selectable: true,
               crossOrigin: "anonymous",
             });
+            extendedImg.id = "productImage";
 
             if (productShadow.enabled) {
-              img.set(
+              extendedImg.set(
                 "shadow",
                 new fabric.Shadow({
                   color: `rgba(0,0,0,${productShadow.opacity})`,
@@ -249,7 +306,15 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
               );
             }
 
-            editorCanvas.add(img);
+            // Remover imagem anterior do produto, se existir
+            const existingProductImage = editorCanvas
+              .getObjects()
+              .find((obj) => obj instanceof fabric.Image);
+            if (existingProductImage) {
+              editorCanvas.remove(existingProductImage);
+            }
+
+            editorCanvas.add(extendedImg);
           }
           editorCanvas.renderAll();
         },
@@ -493,7 +558,7 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
   };
 
   const handleImportToCanvas = async () => {
-    if (!editorCanvas || !fabricRef.current) return;
+    if (!editorCanvas) return;
 
     try {
       // Criar uma cópia temporária dos objetos atuais
@@ -539,11 +604,14 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
             });
             extendedImg.objectId = uuidv4();
 
-            fabricRef.current?.add(extendedImg);
-            fabricRef.current?.renderAll();
+            // Verificar se fabricRef existe antes de usá-lo
+            if (fabricRef && fabricRef.current) {
+              fabricRef.current.add(extendedImg);
+              fabricRef.current.renderAll();
 
-            if (syncShapeInStorage) {
-              syncShapeInStorage(extendedImg);
+              if (syncShapeInStorage) {
+                syncShapeInStorage(extendedImg);
+              }
             }
 
             setIsModalOpen(false);
@@ -728,13 +796,94 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
     }
   };
 
+  const handleSaveTemplate = () => {
+    if (!editorCanvas) return;
+
+    const template: KVTemplate = {
+      id: Date.now().toString(),
+      name: formData.productName || "Template sem nome",
+      description: formData.productDescription || "Sem descrição",
+      createdAt: new Date().toISOString(),
+      elements: editorCanvas.getObjects().map((obj) => obj.toObject()),
+    };
+
+    try {
+      const savedTemplates = localStorage.getItem("kvTemplates");
+      const templates: KVTemplate[] = savedTemplates
+        ? JSON.parse(savedTemplates)
+        : [];
+      templates.push(template);
+      localStorage.setItem("kvTemplates", JSON.stringify(templates));
+      alert("Template salvo com sucesso!");
+    } catch (error) {
+      console.error("Erro ao salvar template:", error);
+      alert("Erro ao salvar template. Tente novamente.");
+    }
+  };
+
+  const handleSelectTemplate = (template: KVTemplate) => {
+    if (!editorCanvas) return;
+
+    editorCanvas.clear();
+
+    // Usar fabric.util.enlivenObjects para recriar os objetos do template
+    fabric.util.enlivenObjects(template.elements, (enlivenedObjects) => {
+      enlivenedObjects.forEach((obj) => {
+        editorCanvas.add(obj);
+      });
+      editorCanvas.renderAll();
+    });
+  };
+
+  const handleShadowChange = (property: string, value: number) => {
+    if (!editorCanvas) return;
+
+    const productImage = editorCanvas
+      .getObjects()
+      .find((obj) => obj.type === "image") as fabric.Image;
+
+    if (productImage && productImage.shadow) {
+      const shadow = productImage.shadow as fabric.Shadow;
+      switch (property) {
+        case "blur":
+          shadow.blur = value;
+          break;
+        case "distance":
+          shadow.offsetX = value;
+          shadow.offsetY = value;
+          break;
+        case "opacity":
+          if (typeof shadow.opacity === "number") {
+            shadow.opacity = value / 100;
+          }
+          break;
+      }
+      editorCanvas.renderAll();
+    }
+  };
+
+  const handleCreateGridKV = () => {
+    setIsGridModalOpen(true);
+  };
+
   return (
-    <div>
+    <div className='flex flex-col gap-4 p-4'>
+      <div className='flex flex-col gap-2'>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className='bg-primary-blue hover:bg-primary-blue/90 flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white'
+        >
+          <Plus size={16} />
+          Criar NOVO KV
+        </button>
+        <KVGridButton onClick={handleCreateGridKV} />
+      </div>
+
       <button
-        onClick={() => setIsModalOpen(true)}
-        className='hover:bg-primary-green-dark rounded-md bg-primary-green px-4 py-2 text-sm text-primary-black'
+        onClick={() => setShowTemplates(true)}
+        className='hover:bg-primary-blue-dark bg-primary-blue rounded-md px-4 py-2 text-sm text-white'
       >
-        Criar Novo KV
+        Editar KV
       </button>
 
       <KVModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
@@ -744,7 +893,7 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
           </h1>
 
           <div className='flex gap-8'>
-            <div className='flex flex-col gap-4'>
+            <div className='flex max-h-[80vh] flex-col gap-4 overflow-y-auto pr-4'>
               <KVForm
                 formData={formData}
                 onFileChange={handleFileChange}
@@ -858,10 +1007,10 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
 
               <div className='flex gap-2'>
                 <button
-                  onClick={handleImportToCanvas}
+                  onClick={handleSaveTemplate}
                   className='hover:bg-primary-green-dark mt-4 rounded-md bg-primary-green px-4 py-2 text-sm text-primary-black'
                 >
-                  Importar para o Canvas
+                  Salvar Template
                 </button>
 
                 <button
@@ -873,13 +1022,24 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
               </div>
             </div>
 
-            <KVCanvas
-              editorCanvasRef={editorCanvasRef}
-              onCanvasReady={handleCanvasReady}
-            />
+            <div className='sticky top-0'>
+              <KVCanvas
+                editorCanvasRef={editorCanvasRef}
+                onCanvasReady={handleCanvasReady}
+              />
+            </div>
           </div>
         </div>
       </KVModal>
+      <KVTemplates
+        isOpen={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        onSelectTemplate={handleSelectTemplate}
+      />
+      <KVGridSystem
+        isOpen={isGridModalOpen}
+        onClose={() => setIsGridModalOpen(false)}
+      />
     </div>
   );
 };

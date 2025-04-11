@@ -22,6 +22,7 @@ const KVCanvas = ({ editorCanvasRef, onCanvasReady }: KVCanvasProps) => {
       width: CANVAS_WIDTH,
       height: CANVAS_HEIGHT,
       backgroundColor: "#1a1a1a",
+      preserveObjectStacking: true,
     });
 
     canvasInstanceRef.current = canvas;
@@ -40,15 +41,17 @@ const KVCanvas = ({ editorCanvasRef, onCanvasReady }: KVCanvasProps) => {
     const updateCanvasScale = () => {
       if (!containerRef.current || !canvasInstanceRef.current) return;
 
-      const containerHeight = 600;
       const containerWidth = containerRef.current.clientWidth;
+      const containerHeight = containerRef.current.clientHeight;
 
-      const scaleY = containerHeight / CANVAS_HEIGHT;
+      // Calcular a escala mantendo a proporção do KV
       const scaleX = containerWidth / CANVAS_WIDTH;
-      const newScale = Math.min(scaleX, scaleY);
+      const scaleY = containerHeight / CANVAS_HEIGHT;
+      const newScale = Math.min(scaleX, scaleY) * 0.9; // 90% do tamanho para dar uma margem
 
       setScale(newScale);
 
+      // Aplicar a escala ao canvas
       canvasInstanceRef.current.setZoom(newScale);
       canvasInstanceRef.current.setWidth(CANVAS_WIDTH * newScale);
       canvasInstanceRef.current.setHeight(CANVAS_HEIGHT * newScale);
@@ -68,16 +71,19 @@ const KVCanvas = ({ editorCanvasRef, onCanvasReady }: KVCanvasProps) => {
   }, []);
 
   return (
-    <div className='w-2/3'>
+    <div className='w-[600px]'>
       <span className='text-sm text-primary-grey-300'>Editor</span>
       <div
         ref={containerRef}
-        className='mt-2 flex h-[600px] items-center justify-center overflow-hidden rounded-md border border-primary-grey-200 bg-[#121212]'
+        className='mt-2 flex h-[800px] items-center justify-center overflow-hidden rounded-md border border-primary-grey-200 bg-[#121212]'
       >
         <div
           style={{
             width: CANVAS_WIDTH * scale,
             height: CANVAS_HEIGHT * scale,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
           }}
         >
           <canvas ref={editorCanvasRef} />
