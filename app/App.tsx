@@ -488,6 +488,22 @@ const Home = () => {
     });
   }, [canvasObjects]);
 
+  const handleReorderShapes = (reorderedShapes: any[]) => {
+    // Atualiza a ordem dos shapes no canvas
+    reorderedShapes.forEach((shape, index) => {
+      const object = fabricRef.current
+        ?.getObjects()
+        .find((obj: any) => obj.id === shape[0]);
+      if (object) {
+        object.moveTo(index);
+      }
+    });
+    fabricRef.current?.renderAll();
+    if (syncShapeInStorage) {
+      syncShapeInStorage();
+    }
+  };
+
   return (
     <main className='h-screen overflow-hidden'>
       <Navbar
@@ -508,7 +524,10 @@ const Home = () => {
       />
 
       <section className='flex h-full flex-row'>
-        <LeftSidebar allShapes={Array.from(canvasObjects)} />
+        <LeftSidebar
+          allShapes={Array.from(canvasObjects)}
+          onReorderShapes={handleReorderShapes}
+        />
 
         <Live canvasRef={canvasRef} undo={undo} redo={redo} />
 
