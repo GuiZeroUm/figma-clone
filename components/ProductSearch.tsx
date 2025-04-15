@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import Image from "next/image";
-import { Search, Upload } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import * as XLSX from "xlsx";
+import ImportTabloide from "./ImportTabloide";
 
 // Define product type
 type Product = {
@@ -14,14 +14,13 @@ type Product = {
   codauxiliar: string;
   link_imagem: string;
   vl_oferta: number;
+  preco_tabloide?: string;
 };
 
 const ProductSearch = () => {
   const [productCode, setProductCode] = useState("");
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [importStatus, setImportStatus] = useState<string>("");
 
   const handleSearchProduct = async () => {
     if (!productCode) return;
@@ -44,208 +43,25 @@ const ProductSearch = () => {
     }
   };
 
-  const handleFileUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const uploadedFile = event.target.files?.[0];
-    if (!uploadedFile) return;
-
-    setFile(uploadedFile);
-    setImportStatus(`Processando arquivo: ${uploadedFile.name}`);
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      if (!e.target?.result) return;
-
-      try {
-        const data = new Uint8Array(e.target.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-
-        const jsonData = XLSX.utils.sheet_to_json(sheet, {
-          header: 1,
-        }) as Array<Array<any>>;
-        console.log("Extracted data:", jsonData);
-
-        if (!jsonData.length || !Array.isArray(jsonData[0])) {
-          setImportStatus("Erro: Formato de arquivo inválido");
-          return;
-        }
-
-        // Look for barcode column using various possible names
-        const headers = jsonData.find(
-          (row) =>
-            Array.isArray(row) &&
-            row.some(
-              (cell) =>
-                typeof cell === "string" &&
-                (cell.includes("Cód.Barra") ||
-                  cell.includes("Código de Barras"))
-            )
-        );
-
-        console.log("Headers found:", headers);
-
-        if (!headers || !Array.isArray(headers)) {
-          setImportStatus("Erro: Cabeçalho não encontrado no arquivo");
-          return;
-        }
-
-        const possibleBarcodeColumns = [
-          "cód.barra",
-          "cod.barra",
-          "codbarra",
-          "código de barras",
-          "código",
-          "barcode",
-          "ean",
-          "cód. barra",
-        ];
-
-        let barcodeIndex = -1;
-
-        headers.forEach((header, index) => {
-          const normalizedHeader = String(header).trim().toLowerCase();
-          if (
-            possibleBarcodeColumns.some((col) => normalizedHeader.includes(col))
-          ) {
-            barcodeIndex = index;
-            console.log(
-              `Coluna de código de barras encontrada: "${header}" (Índice: ${index})`
-            );
-          }
-        });
-
-        if (barcodeIndex === -1) {
-          console.error("Coluna de código de barras não encontrada.");
-          setImportStatus("Erro: Coluna de código de barras não encontrada");
-          return;
-        }
-
-        // Extract barcodes, filtering out empty values and converting to string
-        const barcodes = jsonData
-          .slice(1)
-          .map((row: any) => row[barcodeIndex])
-          .filter(Boolean)
-          .map((code) => code.toString().trim());
-
-        console.log(
-          `Encontrados ${barcodes.length} códigos para buscar:`,
-          barcodes.slice(0, 5)
-        );
-        setImportStatus(
-          `Encontrados ${barcodes.length} códigos. Buscando produtos...`
-        );
-
-        // Fetch products in batches
-        if (barcodes.length > 0) {
-          await fetchProductsByBarcodes(barcodes);
-        } else {
-          setImportStatus("Nenhum código de barras encontrado no arquivo");
-        }
-      } catch (error) {
-        console.error("Erro ao processar arquivo XLSX:", error);
-        setImportStatus(
-          `Erro ao processar arquivo: ${error instanceof Error ? error.message : "Erro desconhecido"}`
-        );
-      }
-    };
-
-    reader.onerror = (error) => {
-      console.error("Erro na leitura do arquivo:", error);
-      setImportStatus("Erro na leitura do arquivo");
-    };
-
-    reader.readAsArrayBuffer(uploadedFile);
-  };
-
-  const fetchProductsByBarcodes = async (barcodes: string[]) => {
-    if (barcodes.length === 0) return;
-
-    try {
-      setIsSearching(true);
-
-      // Remove the header if it's in the array
-      const cleanedBarcodes = barcodes.filter(
-        (code) =>
-          !code.toLowerCase().includes("cód.barra") &&
-          !code.toLowerCase().includes("código") &&
-          code.trim() !== ""
-      );
-
-      console.log(
-        `Enviando ${cleanedBarcodes.length} códigos para API:`,
-        cleanedBarcodes.slice(0, 5)
-      );
-
-      // Format the request body correctly with the 'codigos' property
-      const response = await fetch("http://0.0.0.0:8000/produtos/lote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ codigos: cleanedBarcodes }),
-      });
-
-      console.log("Status da resposta:", response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erro na API:", response.status, errorText);
-        setImportStatus(
-          `Erro na requisição: ${response.status} - ${errorText.substring(0, 100)}${errorText.length > 100 ? "..." : ""}`
-        );
-        setSearchResults([]);
-        return;
-      }
-
-      const data = await response.json();
-      console.log(`Retornados ${data.length} produtos da API`);
-
-      setSearchResults(data);
-      setImportStatus(
-        data.length > 0
-          ? `Importação concluída: ${data.length} produtos encontrados`
-          : "Nenhum produto encontrado para os códigos fornecidos"
-      );
-    } catch (error) {
-      console.error("Erro ao buscar produtos:", error);
-      setImportStatus(
-        `Falha na busca: ${error instanceof Error ? error.message : "Erro desconhecido"}`
-      );
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
   const handleDragStart = (e: React.DragEvent, product: Product) => {
     console.log("Drag started with product:", product);
 
-    // Check if the image URL is valid
     if (!product.link_imagem) {
       console.error("Product has no image URL");
       return;
     }
 
-    // Log the exact URL for debugging
     console.log("Image URL being used for drag:", product.link_imagem);
 
-    // Store the product image data in multiple formats for compatibility
     const data = {
       type: "product-image",
       data: product,
     };
 
-    // Set data in application/json format
     e.dataTransfer.setData("application/json", JSON.stringify(data));
-
-    // Also set as text for fallback
     e.dataTransfer.setData("text/plain", product.link_imagem);
-
-    // Set effectAllowed to all common operations
     e.dataTransfer.effectAllowed = "copyMove";
 
-    // Preload the image to verify it loads correctly
     const preloadImg = new window.Image();
     preloadImg.onload = () => {
       console.log("Image preloaded successfully:", product.link_imagem);
@@ -255,11 +71,9 @@ const ProductSearch = () => {
     };
     preloadImg.src = product.link_imagem;
 
-    // Use window.Image to create the drag image
     const img = new window.Image();
     img.src = product.link_imagem;
     img.onload = () => {
-      // Only set drag image after it's loaded
       try {
         e.dataTransfer.setDragImage(img, img.width / 2, img.height / 2);
       } catch (error) {
@@ -267,7 +81,6 @@ const ProductSearch = () => {
       }
     };
 
-    // Set a default drag image while the actual image loads
     const div = document.createElement("div");
     div.textContent = "Arrastando produto...";
     div.style.padding = "10px";
@@ -277,6 +90,10 @@ const ProductSearch = () => {
     document.body.appendChild(div);
     e.dataTransfer.setDragImage(div, 0, 0);
     setTimeout(() => document.body.removeChild(div), 0);
+  };
+
+  const handleProductsFound = (products: Product[]) => {
+    setSearchResults(products);
   };
 
   return (
@@ -301,36 +118,7 @@ const ProductSearch = () => {
         </Button>
       </div>
 
-      <div className='flex flex-col gap-2'>
-        <input
-          type='file'
-          accept='.xlsx,.xls'
-          onChange={handleFileUpload}
-          className='hidden'
-          id='fileInput'
-        />
-        <label
-          htmlFor='fileInput'
-          className='bg-primary-blue hover:bg-primary-blue/90 flex cursor-pointer items-center justify-center gap-2 rounded-md px-4 py-2 text-white shadow-md transition-shadow duration-200'
-        >
-          <Upload size={16} />
-          Importar tabloide
-        </label>
-
-        {importStatus && (
-          <div
-            className={`rounded-md px-3 py-2 text-sm ${
-              importStatus.includes("Erro")
-                ? "bg-red-900/20 text-red-400"
-                : importStatus.includes("concluída")
-                  ? "bg-green-900/20 text-green-400"
-                  : "bg-blue-900/20 text-blue-400"
-            }`}
-          >
-            {importStatus}
-          </div>
-        )}
-      </div>
+      <ImportTabloide onProductsFound={handleProductsFound} />
 
       <div className='mt-4'>
         {isSearching ? (
@@ -349,15 +137,17 @@ const ProductSearch = () => {
                     onDragStart={(e) => handleDragStart(e, product)}
                     title='Arraste para a tela para adicionar'
                   >
-                    <div className='mb-3 flex h-32 items-center justify-center rounded-md bg-white/5 p-2'>
-                      <div className='group relative cursor-move'>
-                        <Image
-                          src={product.link_imagem}
-                          alt={product.descricao}
-                          width={120}
-                          height={120}
-                          className='object-contain transition-transform duration-200 group-hover:scale-105'
-                        />
+                    <div className='mb-3 flex h-32 w-full items-center justify-center overflow-hidden rounded-md bg-white/5 p-2'>
+                      <div className='group relative h-full w-full cursor-move'>
+                        <div className='relative h-full w-full'>
+                          <Image
+                            src={product.link_imagem}
+                            alt={product.descricao}
+                            fill
+                            sizes='(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw'
+                            className='object-contain transition-transform duration-200 group-hover:scale-105'
+                          />
+                        </div>
                         <div className='absolute inset-0 flex items-center justify-center rounded-md bg-primary-green/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100'>
                           <span className='rounded-md bg-primary-black/70 px-2 py-1 text-xs font-medium text-primary-green'>
                             Arraste-me
@@ -368,15 +158,29 @@ const ProductSearch = () => {
                     <h3 className='text-primary-grey-500 line-clamp-2 min-h-[40px] text-sm font-semibold'>
                       {product.descricao}
                     </h3>
-                    <div className='mt-2 flex items-center justify-between'>
+                    <div className='mt-2 flex flex-col gap-2'>
                       <span className='rounded-full bg-primary-green/20 px-2 py-0.5 text-xs font-medium text-primary-green'>
                         Cód: {product.codauxiliar}
                       </span>
-                      {product.vl_oferta > 0 && (
-                        <span className='bg-primary-blue/20 text-primary-blue rounded-full px-2 py-0.5 text-xs font-medium'>
-                          Oferta: R$ {product.vl_oferta.toFixed(2)}
+                      <div className='flex flex-col gap-1'>
+                        <span className='bg-primary-blue/20 text-primary-blue rounded-md px-2 py-0.5 text-sm font-semibold'>
+                          Preço Sistema:{" "}
+                          {product.vl_oferta.toLocaleString("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          })}
                         </span>
-                      )}
+                        {product.preco_tabloide && (
+                          <span className='rounded-md bg-yellow-500/20 px-2 py-0.5 text-sm font-semibold text-yellow-500'>
+                            Preço Tabloide: R$ {product.preco_tabloide}
+                          </span>
+                        )}
+                        {!product.preco_tabloide && (
+                          <span className='rounded-md bg-red-500/20 px-2 py-0.5 text-sm font-semibold text-red-500'>
+                            Sem preço tabloide
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
