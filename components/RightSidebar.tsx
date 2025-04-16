@@ -50,7 +50,7 @@ const RightSidebar = ({
             className={`flex-1 py-4 text-xs uppercase ${activeTab === "KVGenerate" ? "bg-primary-grey-800" : ""}`}
             onClick={() => setActiveTab("KVGenerate")}
           >
-            Nova Aba
+            KVS
           </button>
         </div>
 

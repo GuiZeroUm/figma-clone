@@ -29,6 +29,8 @@ interface KVFormData {
   productDescription: string;
   productPrice: string;
   productImage: File | null;
+  validity: string;
+  legalText: string;
 }
 
 interface KVTemplate {
@@ -57,6 +59,8 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
     productDescription: "",
     productPrice: "",
     productImage: null,
+    validity: "",
+    legalText: "",
   });
 
   const [selectedElement, setSelectedElement] = useState<fabric.Object | null>(
@@ -329,10 +333,13 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
     }));
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
     if (!editorCanvas) return;
 
+    // Comportamento normal para todos os campos
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -343,29 +350,50 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
 
     if (textObject) {
       (textObject as fabric.Text).set({
-        text: value.toUpperCase(),
+        text: name === "price" ? value.toUpperCase() : value,
       });
       editorCanvas.renderAll();
     } else {
-      const newText = new fabric.Text(value.toUpperCase(), {
-        left: elementStyles.left,
-        top: name === "price" ? elementStyles.top + 60 : elementStyles.top,
-        fontSize: elementStyles.fontSize,
-        fill: elementStyles.fill,
-        fontFamily: "Arial",
-        fontWeight: "700",
-        originX: "center",
-        originY: "center",
-        stroke: elementStyles.stroke,
-        strokeWidth: elementStyles.strokeWidth,
-        shadow: new fabric.Shadow({
-          color: elementStyles.shadow.color,
-          blur: elementStyles.shadow.blur,
-          offsetX: elementStyles.shadow.offsetX,
-          offsetY: elementStyles.shadow.offsetY,
-        }),
-        selectable: true,
-      }) as ExtendedFabricText;
+      let top = elementStyles.top;
+      let fontSize = elementStyles.fontSize;
+
+      // Posicionar a vigência no topo
+      if (name === "validity") {
+        top = CANVAS_HEIGHT * 0.05;
+        fontSize = 32;
+      }
+      // Posicionar o texto legal na parte inferior
+      else if (name === "legalText") {
+        top = CANVAS_HEIGHT * 0.95;
+        fontSize = 24;
+      }
+      // Posicionar o preço abaixo da descrição
+      else if (name === "price") {
+        top = elementStyles.top + 60;
+      }
+
+      const newText = new fabric.Text(
+        name === "price" ? value.toUpperCase() : value,
+        {
+          left: elementStyles.left,
+          top: top,
+          fontSize: fontSize,
+          fill: elementStyles.fill,
+          fontFamily: "Arial",
+          fontWeight: "700",
+          originX: "center",
+          originY: "center",
+          stroke: elementStyles.stroke,
+          strokeWidth: elementStyles.strokeWidth,
+          shadow: new fabric.Shadow({
+            color: elementStyles.shadow.color,
+            blur: elementStyles.shadow.blur,
+            offsetX: elementStyles.shadow.offsetX,
+            offsetY: elementStyles.shadow.offsetY,
+          }),
+          selectable: true,
+        }
+      ) as ExtendedFabricText;
       newText.id = name;
       editorCanvas.add(newText);
       editorCanvas.renderAll();
@@ -799,12 +827,42 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
   const handleSaveTemplate = () => {
     if (!editorCanvas) return;
 
+    // Capturar o background atual
+    const backgroundImage = editorCanvas.backgroundImage as fabric.Image;
+
     const template: KVTemplate = {
       id: Date.now().toString(),
       name: formData.productName || "Template sem nome",
       description: formData.productDescription || "Sem descrição",
       createdAt: new Date().toISOString(),
-      elements: editorCanvas.getObjects().map((obj) => obj.toObject()),
+      elements: [
+        // Salvar o background como primeiro elemento com flag especial
+        ...(backgroundImage
+          ? [
+              {
+                ...backgroundImage.toObject(["id"]),
+                type: "image",
+                isBackground: true,
+                src: backgroundImage.getSrc(),
+              },
+            ]
+          : []),
+        // Salvar outros elementos
+        ...editorCanvas.getObjects().map((obj) => {
+          const objData = obj.toObject(["id"]);
+          if (obj instanceof fabric.Image) {
+            return {
+              ...objData,
+              type: "image",
+              src: (obj as fabric.Image).getSrc(),
+            };
+          }
+          return {
+            ...objData,
+            type: obj.type,
+          };
+        }),
+      ],
     };
 
     try {
@@ -824,15 +882,68 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
   const handleSelectTemplate = (template: KVTemplate) => {
     if (!editorCanvas) return;
 
+    // Limpar o canvas atual
     editorCanvas.clear();
 
-    // Usar fabric.util.enlivenObjects para recriar os objetos do template
-    fabric.util.enlivenObjects(template.elements, (enlivenedObjects) => {
-      enlivenedObjects.forEach((obj) => {
-        editorCanvas.add(obj);
-      });
-      editorCanvas.renderAll();
+    // Processar os elementos do template
+    template.elements.forEach(async (element) => {
+      if (element.isBackground) {
+        // Carregar o background
+        await new Promise<void>((resolve) => {
+          fabric.Image.fromURL(
+            element.src,
+            (img) => {
+              img.set({
+                ...element,
+                left: CANVAS_WIDTH / 2,
+                top: CANVAS_HEIGHT / 2,
+                originX: "center",
+                originY: "center",
+                selectable: false,
+              });
+
+              editorCanvas.setBackgroundImage(img, () => {
+                editorCanvas.renderAll();
+                resolve();
+              });
+            },
+            { crossOrigin: "anonymous" }
+          );
+        });
+      } else if (element.type === "image") {
+        // Carregar imagens normais
+        await new Promise<void>((resolve) => {
+          fabric.Image.fromURL(
+            element.src,
+            (img) => {
+              img.set({
+                ...element,
+                selectable: true,
+              });
+              editorCanvas.add(img);
+              editorCanvas.renderAll();
+              resolve();
+            },
+            { crossOrigin: "anonymous" }
+          );
+        });
+      } else {
+        // Recriar outros elementos (textos, etc)
+        let obj;
+        if (element.type === "text") {
+          obj = new fabric.Text(element.text, {
+            ...element,
+            selectable: true,
+          });
+        }
+
+        if (obj) {
+          editorCanvas.add(obj);
+        }
+      }
     });
+
+    editorCanvas.renderAll();
   };
 
   const handleShadowChange = (property: string, value: number) => {

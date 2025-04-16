@@ -2,6 +2,7 @@ import React from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { FormData } from "../../../types/kv";
 
 interface KVFormProps {
@@ -10,7 +11,9 @@ interface KVFormProps {
     e: React.ChangeEvent<HTMLInputElement>,
     type: "background" | "productImage"
   ) => void;
-  onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onInputChange: (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => void;
   onSearchProduct: (code: string) => void;
   isSearching?: boolean;
 }
@@ -53,6 +56,20 @@ const KVForm = ({
       </div>
 
       <div className='space-y-4'>
+        <div>
+          <label className='mb-2 block text-sm text-primary-grey-300'>
+            Vigência
+          </label>
+          <Input
+            type='text'
+            name='validity'
+            value={formData.validity}
+            onChange={onInputChange}
+            placeholder='Digite a vigência'
+            className='bg-primary-grey-800 border-primary-grey-600 text-primary-grey-300'
+          />
+        </div>
+
         <div>
           <label className='mb-2 block text-sm text-primary-grey-300'>
             Background
@@ -100,6 +117,19 @@ const KVForm = ({
             value={formData.price}
             onChange={onInputChange}
             className='bg-primary-grey-800 border-primary-grey-600 text-primary-grey-300'
+          />
+        </div>
+
+        <div>
+          <label className='mb-2 block text-sm text-primary-grey-300'>
+            Legais
+          </label>
+          <Textarea
+            name='legalText'
+            value={formData.legalText}
+            onChange={onInputChange}
+            className='bg-primary-grey-800 border-primary-grey-600 min-h-[100px] text-primary-grey-300'
+            placeholder='Digite os textos legais aqui...'
           />
         </div>
       </div>

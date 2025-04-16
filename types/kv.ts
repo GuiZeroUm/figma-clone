@@ -5,6 +5,9 @@ export interface FormData {
   productImage: File | null;
   description: string;
   price: string;
+  validityStart: string;
+  validityEnd: string;
+  legalText: string;
 }
 
 export interface ElementStyles {

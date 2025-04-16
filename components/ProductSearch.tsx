@@ -1,26 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import Image from "next/image";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import ImportTabloide from "./ImportTabloide";
+import BulkKVGenerator from "./BulkKVGenerator";
 
 // Define product type
-type Product = {
+export interface Product {
   codprod: number;
   descricao: string;
   codauxiliar: string;
   link_imagem: string;
   vl_oferta: number;
   preco_tabloide?: string;
-};
+}
 
 const ProductSearch = () => {
   const [productCode, setProductCode] = useState("");
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
+  const [showBulkGenerator, setShowBulkGenerator] = useState(false);
 
   const handleSearchProduct = async () => {
     if (!productCode) return;
@@ -41,6 +44,17 @@ const ProductSearch = () => {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const toggleProductSelection = (product: Product) => {
+    setSelectedProducts((prev) => {
+      const isSelected = prev.some((p) => p.codprod === product.codprod);
+      if (isSelected) {
+        return prev.filter((p) => p.codprod !== product.codprod);
+      } else {
+        return [...prev, product];
+      }
+    });
   };
 
   const handleDragStart = (e: React.DragEvent, product: Product) => {
@@ -118,6 +132,20 @@ const ProductSearch = () => {
         </Button>
       </div>
 
+      {selectedProducts.length > 0 && (
+        <div className='bg-primary-grey-800 flex flex-col items-center gap-2 rounded-md p-2'>
+          <span className='text-sm text-primary-grey-300'>
+            {selectedProducts.length} produto(s) selecionado(s)
+          </span>
+          <Button
+            onClick={() => setShowBulkGenerator(true)}
+            className='bg-primary-green text-primary-black hover:bg-primary-green/90'
+          >
+            Gerar em Massa
+          </Button>
+        </div>
+      )}
+
       <ImportTabloide onProductsFound={handleProductsFound} />
 
       <div className='mt-4'>
@@ -132,7 +160,13 @@ const ProductSearch = () => {
                 {searchResults.map((product) => (
                   <div
                     key={product.codprod}
-                    className='bg-primary-grey-800 hover:bg-primary-grey-700 rounded-md border border-transparent p-4 transition-all duration-200 hover:border-primary-green/30 hover:shadow-lg hover:shadow-primary-green/20'
+                    className={`bg-primary-grey-800 rounded-md border p-4 transition-all duration-200 ${
+                      selectedProducts.some(
+                        (p) => p.codprod === product.codprod
+                      )
+                        ? "border-primary-green/30 shadow-lg shadow-primary-green/20"
+                        : "border-transparent hover:border-primary-green/30 hover:shadow-lg hover:shadow-primary-green/20"
+                    }`}
                     draggable
                     onDragStart={(e) => handleDragStart(e, product)}
                     title='Arraste para a tela para adicionar'
@@ -149,9 +183,16 @@ const ProductSearch = () => {
                           />
                         </div>
                         <div className='absolute inset-0 flex items-center justify-center rounded-md bg-primary-green/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100'>
-                          <span className='rounded-md bg-primary-black/70 px-2 py-1 text-xs font-medium text-primary-green'>
-                            Arraste-me
-                          </span>
+                          <Button
+                            onClick={() => toggleProductSelection(product)}
+                            className='rounded-md bg-primary-black/70 px-2 py-1 text-xs font-medium text-primary-green hover:bg-primary-black/90'
+                          >
+                            {selectedProducts.some(
+                              (p) => p.codprod === product.codprod
+                            )
+                              ? "Selecionado"
+                              : "Selecionar"}
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -195,6 +236,13 @@ const ProductSearch = () => {
           </>
         )}
       </div>
+
+      {showBulkGenerator && (
+        <BulkKVGenerator
+          selectedProducts={selectedProducts}
+          onClose={() => setShowBulkGenerator(false)}
+        />
+      )}
     </div>
   );
 };
