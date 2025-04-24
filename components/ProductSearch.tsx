@@ -31,7 +31,7 @@ const ProductSearch = () => {
     try {
       setIsSearching(true);
       const response = await fetch(
-        `http://0.0.0.0:8000/produtos/${productCode}`
+        `http://172.16.23.35:8000/produtos/${productCode}`
       );
       if (!response.ok) {
         throw new Error("Failed to fetch product data");

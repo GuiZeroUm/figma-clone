@@ -1,13 +1,17 @@
 import { fabric } from "fabric";
 
 export interface FormData {
-  background: File | null;
-  productImage: File | null;
-  description: string;
-  price: string;
-  validityStart: string;
-  validityEnd: string;
-  legalText: string;
+  background?: File | null;
+  productName?: string;
+  productDescription?: string;
+  productPrice?: string;
+  productImage?: File | null;
+  description?: string;
+  price?: string;
+  validity?: string;
+  validityStart?: string;
+  validityEnd?: string;
+  legalText?: string;
 }
 
 export interface ElementStyles {
@@ -28,6 +32,7 @@ export interface ElementStyles {
 
 export interface ExtendedFabricObject extends fabric.Object {
   objectId?: string;
+  id?: string;
 }
 
 export interface ExtendedFabricText extends fabric.Text {

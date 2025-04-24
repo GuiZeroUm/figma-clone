@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    domains: ["cdn-cosmos.bluesoft.com.br", "liveblocks.io"],
+    domains: ["cdn-cosmos.bluesoft.com.br"],
   },
 };
 

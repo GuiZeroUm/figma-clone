@@ -1,22 +1,9 @@
 import { useMemo } from "react";
 
-import { useThreads } from "@/liveblocks.config";
+import { useThreads } from "@/lib/presenceHooks";
 
-// Returns the highest z-index of all threads
+// Retorna um z-index padrão para novos threads
 export const useMaxZIndex = () => {
-  // get all threads
-  const { threads } = useThreads();
-
-  // calculate the max z-index
-  return useMemo(() => {
-    let max = 0;
-    for (const thread of threads) {
-      // @ts-ignore
-      if (thread.metadata.zIndex > max) {
-        // @ts-ignore
-        max = thread.metadata.zIndex;
-      }
-    }
-    return max;
-  }, [threads]);
+  // Como não temos mais threads do Liveblocks, retornamos um valor fixo
+  return 1;
 };

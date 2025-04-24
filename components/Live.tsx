@@ -2,14 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { useBroadcastEvent, useEventListener, useMyPresence, useOthers } from "@/liveblocks.config";
+import {
+  useMyPresence,
+  useOthers,
+  useBroadcastEvent,
+  useEventListener,
+} from "@/lib/presenceHooks";
 import useInterval from "@/hooks/useInterval";
 import { CursorMode, CursorState, Reaction, ReactionEvent } from "@/types/type";
 import { shortcuts } from "@/constants";
 
-import { Comments } from "./comments/Comments";
-import { CursorChat, FlyingReaction, LiveCursors, ReactionSelector } from "./index";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
+// Comentado para remover funcionalidade de colaboração
+// import { Comments } from "./comments/Comments";
+// import { CursorChat, FlyingReaction, LiveCursors, ReactionSelector } from "./index";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "./ui/context-menu";
 
 type Props = {
   canvasRef: React.MutableRefObject<HTMLCanvasElement | null>;
@@ -55,12 +66,18 @@ const Live = ({ canvasRef, undo, redo }: Props) => {
 
   // Remove reactions that are not visible anymore (every 1 sec)
   useInterval(() => {
-    setReactions((reactions) => reactions.filter((reaction) => reaction.timestamp > Date.now() - 4000));
+    setReactions((reactions) =>
+      reactions.filter((reaction) => reaction.timestamp > Date.now() - 4000)
+    );
   }, 1000);
 
   // Broadcast the reaction to other users (every 100ms)
   useInterval(() => {
-    if (cursorState.mode === CursorMode.Reaction && cursorState.isPressed && cursor) {
+    if (
+      cursorState.mode === CursorMode.Reaction &&
+      cursorState.isPressed &&
+      cursor
+    ) {
       // concat all the reactions created on mouse click
       setReactions((reactions) =>
         reactions.concat([
@@ -87,7 +104,7 @@ const Live = ({ canvasRef, undo, redo }: Props) => {
    *
    * useEventListener: https://liveblocks.io/docs/api-reference/liveblocks-react#useEventListener
    */
-  useEventListener((eventData) => {
+  useEventListener((eventData: any) => {
     const event = eventData.event as ReactionEvent;
     setReactions((reactions) =>
       reactions.concat([
@@ -179,7 +196,9 @@ const Live = ({ canvasRef, undo, redo }: Props) => {
 
       // if cursor is in reaction mode, set isPressed to true
       setCursorState((state: CursorState) =>
-        cursorState.mode === CursorMode.Reaction ? { ...state, isPressed: true } : state
+        cursorState.mode === CursorMode.Reaction
+          ? { ...state, isPressed: true }
+          : state
       );
     },
     [cursorState.mode, setCursorState]
@@ -188,7 +207,9 @@ const Live = ({ canvasRef, undo, redo }: Props) => {
   // hide the cursor when the mouse is up
   const handlePointerUp = useCallback(() => {
     setCursorState((state: CursorState) =>
-      cursorState.mode === CursorMode.Reaction ? { ...state, isPressed: false } : state
+      cursorState.mode === CursorMode.Reaction
+        ? { ...state, isPressed: false }
+        : state
     );
   }, [cursorState.mode, setCursorState]);
 
@@ -223,8 +244,8 @@ const Live = ({ canvasRef, undo, redo }: Props) => {
   return (
     <ContextMenu>
       <ContextMenuTrigger
-        className="relative flex h-full w-full flex-1 items-center justify-center"
-        id="canvas"
+        className='relative flex h-full w-full flex-1 items-center justify-center'
+        id='canvas'
         style={{
           cursor: cursorState.mode === CursorMode.Chat ? "none" : "auto",
         }}
@@ -235,8 +256,9 @@ const Live = ({ canvasRef, undo, redo }: Props) => {
       >
         <canvas ref={canvasRef} />
 
+        {/* Comentado para remover funcionalidade de colaboração */}
         {/* Render the reactions */}
-        {reactions.map((reaction) => (
+        {/* {reactions.map((reaction) => (
           <FlyingReaction
             key={reaction.timestamp.toString()}
             x={reaction.point.x}
@@ -244,43 +266,41 @@ const Live = ({ canvasRef, undo, redo }: Props) => {
             timestamp={reaction.timestamp}
             value={reaction.value}
           />
-        ))}
+        ))} */}
 
         {/* If cursor is in chat mode, show the chat cursor */}
-        {cursor && (
+        {/* {cursor && (
           <CursorChat
             cursor={cursor}
             cursorState={cursorState}
             setCursorState={setCursorState}
             updateMyPresence={updateMyPresence}
           />
-        )}
+        )} */}
 
         {/* If cursor is in reaction selector mode, show the reaction selector */}
-        {cursorState.mode === CursorMode.ReactionSelector && (
+        {/* {cursorState.mode === CursorMode.ReactionSelector && (
           <ReactionSelector
-            setReaction={(reaction) => {
-              setReaction(reaction);
-            }}
+            setReaction={setReaction}
           />
-        )}
+        )} */}
 
         {/* Show the live cursors of other users */}
-        <LiveCursors others={others} />
+        {/* <LiveCursors others={others} /> */}
 
         {/* Show the comments */}
-        <Comments />
+        {/* <Comments /> */}
       </ContextMenuTrigger>
 
-      <ContextMenuContent className="right-menu-content">
+      <ContextMenuContent className='right-menu-content'>
         {shortcuts.map((item) => (
           <ContextMenuItem
             key={item.key}
-            className="right-menu-item"
+            className='right-menu-item'
             onClick={() => handleContextMenuClick(item.name)}
           >
             <p>{item.name}</p>
-            <p className="text-xs text-primary-grey-300">{item.shortcut}</p>
+            <p className='text-xs text-primary-grey-300'>{item.shortcut}</p>
           </ContextMenuItem>
         ))}
       </ContextMenuContent>

@@ -1,41 +1,20 @@
 "use client";
 
-import { LiveMap } from "@liveblocks/client";
-import { ClientSideSuspense } from "@liveblocks/react";
-
+import { LocalMap } from "@/lib/localStore";
+import { LocalStoreProvider } from "@/lib/localStore.context";
 import Loader from "@/components/Loader";
-import { RoomProvider } from "@/liveblocks.config";
+import { Suspense } from "react";
 
 const Room = ({ children }: { children: React.ReactNode }) => {
   return (
-    <RoomProvider
-      id="fig-room"
-      /**
-       * initialPresence is used to initialize the presence of the current
-       * user in the room.
-       *
-       * initialPresence: https://liveblocks.io/docs/api-reference/liveblocks-react#RoomProvider
-       */
-      initialPresence={{ cursor: null, cursorColor: null, editingText: null }}
-      /**
-       * initialStorage is used to initialize the storage of the room.
-       *
-       * initialStorage: https://liveblocks.io/docs/api-reference/liveblocks-react#RoomProvider
-       */
+    <LocalStoreProvider
       initialStorage={{
-        /**
-         * We're using a LiveMap to store the canvas objects
-         *
-         * LiveMap: https://liveblocks.io/docs/api-reference/liveblocks-client#LiveMap
-         */
-        canvasObjects: new LiveMap(),
+        canvasObjects: new Map(),
       }}
     >
-      <ClientSideSuspense fallback={<Loader />}>
-        {() => children}
-      </ClientSideSuspense>
-    </RoomProvider>
+      <Suspense fallback={<Loader />}>{children}</Suspense>
+    </LocalStoreProvider>
   );
-}
+};
 
 export default Room;

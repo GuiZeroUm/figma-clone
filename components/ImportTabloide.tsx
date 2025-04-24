@@ -181,7 +181,7 @@ const ImportTabloide = ({ onProductsFound }: ImportTabloideProps) => {
       );
 
       // Format the request body correctly with the 'codigos' property
-      const response = await fetch("http://0.0.0.0:8000/produtos/lote", {
+      const response = await fetch("http://172.16.23.35:8000/produtos/lote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ codigos: barcodes }),

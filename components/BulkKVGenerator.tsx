@@ -131,7 +131,7 @@ const BulkKVGenerator = ({
 
       // Send to background removal API
       const removeBgResponse = await fetch(
-        "http://0.0.0.0:8000/remover-fundo",
+        "http://172.16.23.35:8000/remover-fundo",
         {
           method: "POST",
           headers: {

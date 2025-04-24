@@ -3,7 +3,12 @@
 import { fabric } from "fabric";
 import { useEffect, useRef, useState } from "react";
 
-import { useMutation, useRedo, useStorage, useUndo } from "@/liveblocks.config";
+import {
+  useMutation,
+  useRedo,
+  useStorage,
+  useUndo,
+} from "@/lib/localStore.context";
 import {
   handleCanvaseMouseMove,
   handleCanvasMouseDown,
@@ -499,8 +504,14 @@ const Home = () => {
       }
     });
     fabricRef.current?.renderAll();
-    if (syncShapeInStorage) {
-      syncShapeInStorage();
+
+    // Se tivermos objetos no canvas, sincronizamos todos eles
+    if (fabricRef.current && fabricRef.current.getObjects().length > 0) {
+      // Sincroniza o primeiro objeto para atualizar o estado
+      const firstObject = fabricRef.current.getObjects()[0];
+      if (firstObject && syncShapeInStorage) {
+        syncShapeInStorage(firstObject);
+      }
     }
   };
 

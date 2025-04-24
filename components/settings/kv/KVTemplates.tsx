@@ -7,6 +7,7 @@ import KVTemplateEditor from "./KVTemplateEditor";
 interface KVTemplatesProps {
   isOpen: boolean;
   onClose: () => void;
+  onSelectTemplate?: (template: KVTemplate) => void;
 }
 
 interface KVTemplate {
@@ -18,7 +19,11 @@ interface KVTemplate {
   lastUpdated?: string;
 }
 
-const KVTemplates = ({ isOpen, onClose }: KVTemplatesProps) => {
+const KVTemplates = ({
+  isOpen,
+  onClose,
+  onSelectTemplate,
+}: KVTemplatesProps) => {
   const [templates, setTemplates] = useState<KVTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<KVTemplate | null>(
     null
@@ -53,6 +58,13 @@ const KVTemplates = ({ isOpen, onClose }: KVTemplatesProps) => {
       const updatedTemplates = templates.filter((t) => t.id !== templateId);
       localStorage.setItem("kvTemplates", JSON.stringify(updatedTemplates));
       setTemplates(updatedTemplates);
+    }
+  };
+
+  const handleSelectTemplate = (template: KVTemplate) => {
+    if (onSelectTemplate) {
+      onSelectTemplate(template);
+      onClose();
     }
   };
 
@@ -111,6 +123,14 @@ const KVTemplates = ({ isOpen, onClose }: KVTemplatesProps) => {
                 </div>
 
                 <div className='flex gap-2'>
+                  {onSelectTemplate && (
+                    <button
+                      onClick={() => handleSelectTemplate(template)}
+                      className='hover:bg-primary-green-dark rounded-md bg-primary-green px-3 py-1 text-sm text-primary-black'
+                    >
+                      Selecionar
+                    </button>
+                  )}
                   <button
                     onClick={() => handleEditTemplate(template)}
                     className='hover:bg-primary-blue-dark bg-primary-blue rounded-md px-3 py-1 text-sm text-white'

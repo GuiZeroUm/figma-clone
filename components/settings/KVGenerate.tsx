@@ -441,7 +441,7 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
 
     try {
       setIsSearching(true);
-      const response = await fetch(`http://0.0.0.0:8000/produtos/${code}`);
+      const response = await fetch(`http://172.16.23.35:8000/produtos/${code}`);
 
       if (!response.ok) {
         throw new Error("Failed to fetch product data");
@@ -758,7 +758,7 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
       const base64Data = dataURL.split(",")[1];
 
       // Enviar para a API local
-      const response = await fetch("http://0.0.0.0:8000/remover-fundo", {
+      const response = await fetch("http://172.16.23.35:8000/remover-fundo", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

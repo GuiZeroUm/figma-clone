@@ -273,7 +273,7 @@ const KVTemplateEditor = ({
       ensureElementIds();
 
       const response = await fetch(
-        `http://0.0.0.0:8000/produtos/${productCode}`
+        `http://172.16.23.35:8000/produtos/${productCode}`
       );
 
       if (!response.ok) {
@@ -551,7 +551,7 @@ const KVTemplateEditor = ({
       const base64Data = dataURL.split(",")[1];
 
       // Enviar para a API local
-      const response = await fetch("http://0.0.0.0:8000/remover-fundo", {
+      const response = await fetch("http://172.16.23.35:8000/remover-fundo", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

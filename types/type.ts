@@ -1,4 +1,3 @@
-import { BaseUserMeta, User } from "@liveblocks/client";
 import { Gradient, Pattern } from "fabric/fabric-impl";
 
 export enum CursorMode {
@@ -121,7 +120,7 @@ export type ShapesMenuProps = {
 export type Presence = any;
 
 export type LiveCursorProps = {
-  others: readonly User<Presence, BaseUserMeta>[];
+  others: any[];
 };
 
 export type CanvasMouseDown = {
