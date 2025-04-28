@@ -123,17 +123,17 @@ const KVTemplates = ({
                 </div>
 
                 <div className='flex gap-2'>
-                  {onSelectTemplate && (
+                  {/* {onSelectTemplate && (
                     <button
                       onClick={() => handleSelectTemplate(template)}
                       className='hover:bg-primary-green-dark rounded-md bg-primary-green px-3 py-1 text-sm text-primary-black'
                     >
                       Selecionar
                     </button>
-                  )}
+                  )} */}
                   <button
                     onClick={() => handleEditTemplate(template)}
-                    className='hover:bg-primary-blue-dark bg-primary-blue rounded-md px-3 py-1 text-sm text-white'
+                    className='hover:bg-primary-blue-dark rounded-md bg-blue-500 px-3 py-1 text-sm text-white'
                   >
                     Editar
                   </button>

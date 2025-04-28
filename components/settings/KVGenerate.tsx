@@ -99,10 +99,14 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
 
     canvas.on("object:selected", (e) => {
       const target = e.target as fabric.Object;
+      console.log("Selected object:", target);
       setSelectedElement(target);
+
       if (target) {
         const fontSize = (target as any).fontSize || 42;
         const fill = String((target as any).fill || "#ffffff");
+        const shadow = target.shadow as fabric.Shadow | undefined;
+
         setElementStyles({
           fontSize,
           fill,
@@ -111,12 +115,19 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
           scale: target.scaleX || 1,
           stroke: String((target as any).stroke || ""),
           strokeWidth: Number((target as any).strokeWidth || 0),
-          shadow: target.shadow || {
-            color: "rgba(0,0,0,0)",
-            blur: 0,
-            offsetX: 0,
-            offsetY: 0,
-          },
+          shadow: shadow
+            ? {
+                color: String(shadow.color || "rgba(0,0,0,0)"),
+                blur: Number(shadow.blur || 0),
+                offsetX: Number(shadow.offsetX || 0),
+                offsetY: Number(shadow.offsetY || 0),
+              }
+            : {
+                color: "rgba(0,0,0,0)",
+                blur: 0,
+                offsetX: 0,
+                offsetY: 0,
+              },
         });
       }
     });
@@ -126,6 +137,8 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
       if (target) {
         const fontSize = (target as any).fontSize || 42;
         const fill = String((target as any).fill || "#ffffff");
+        const shadow = target.shadow as fabric.Shadow | undefined;
+
         setElementStyles({
           fontSize,
           fill,
@@ -134,18 +147,46 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
           scale: target.scaleX || 1,
           stroke: String((target as any).stroke || ""),
           strokeWidth: Number((target as any).strokeWidth || 0),
-          shadow: target.shadow || {
-            color: "rgba(0,0,0,0)",
-            blur: 0,
-            offsetX: 0,
-            offsetY: 0,
-          },
+          shadow: shadow
+            ? {
+                color: String(shadow.color || "rgba(0,0,0,0)"),
+                blur: Number(shadow.blur || 0),
+                offsetX: Number(shadow.offsetX || 0),
+                offsetY: Number(shadow.offsetY || 0),
+              }
+            : {
+                color: "rgba(0,0,0,0)",
+                blur: 0,
+                offsetX: 0,
+                offsetY: 0,
+              },
         });
       }
     });
 
     canvas.on("selection:cleared", () => {
+      console.log("Selection cleared");
       setSelectedElement(null);
+    });
+
+    // Make elements selectable when added to canvas
+    canvas.on("object:added", (e) => {
+      const obj = e.target;
+      if (obj) {
+        obj.set({
+          selectable: true,
+          hasControls: true,
+          hasBorders: true,
+        });
+      }
+    });
+
+    // Ensure text objects are clickable/interactive
+    canvas.on("mouse:down", (e) => {
+      if (e.target && (e.target.type === "text" || e.target.type === "image")) {
+        canvas.setActiveObject(e.target);
+        canvas.renderAll();
+      }
     });
 
     // Configurar o canvas para garantir que a imagem de background seja exibida corretamente
@@ -215,17 +256,21 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
             })
           );
         } else {
-          productImage.set("shadow", null);
+          productImage.set("shadow", undefined);
         }
       } else {
         if (productShadow.enabled) {
+          const numValue = typeof value === "boolean" ? (value ? 1 : 0) : value;
           productImage.set(
             "shadow",
             new fabric.Shadow({
-              color: `rgba(0,0,0,${property === "opacity" ? value : productShadow.opacity})`,
-              blur: property === "blur" ? value : productShadow.blur,
+              color: `rgba(0,0,0,${property === "opacity" ? numValue : productShadow.opacity})`,
+              blur: property === "blur" ? Number(numValue) : productShadow.blur,
               offsetX: 0,
-              offsetY: property === "offsetY" ? value : productShadow.offsetY,
+              offsetY:
+                property === "offsetY"
+                  ? Number(numValue)
+                  : productShadow.offsetY,
             })
           );
         }
@@ -485,10 +530,15 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
             offsetY: elementStyles.shadow.offsetY,
           }),
           selectable: true,
+          hasControls: true,
+          hasBorders: true,
         }
       ) as ExtendedFabricText;
       newText.id = name;
+
       editorCanvas.add(newText);
+      editorCanvas.setActiveObject(newText);
+      setSelectedElement(newText);
       editorCanvas.renderAll();
     }
   };
@@ -506,7 +556,7 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
         : value,
     }));
 
-    if (property === "fontSize") {
+    if (property === "fontSize" && selectedElement.type === "text") {
       (selectedElement as any).set("fontSize", Number(value));
     } else if (property === "fill" || property === "stroke") {
       (selectedElement as any).set(property, String(value));
@@ -518,9 +568,19 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
       selectedElement.set(property, Number(value));
     } else if (property.startsWith("shadow.")) {
       const shadowProp = property.split(".")[1];
-      const currentShadow = selectedElement.shadow || new fabric.Shadow();
-      currentShadow[shadowProp] =
-        shadowProp === "color" ? String(value) : Number(value);
+      const currentShadow =
+        (selectedElement.shadow as fabric.Shadow) || new fabric.Shadow();
+
+      if (shadowProp === "color") {
+        currentShadow.color = String(value);
+      } else if (shadowProp === "blur") {
+        currentShadow.blur = Number(value);
+      } else if (shadowProp === "offsetX") {
+        currentShadow.offsetX = Number(value);
+      } else if (shadowProp === "offsetY") {
+        currentShadow.offsetY = Number(value);
+      }
+
       selectedElement.set("shadow", currentShadow);
     } else {
       selectedElement.set(property as any, Number(value));
@@ -566,6 +626,13 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
             editorCanvas.remove(existingProductImage);
           }
 
+          // Make the image selectable
+          img.set({
+            selectable: true,
+            hasControls: true,
+            hasBorders: true,
+          });
+
           editorCanvas.add(img);
           editorCanvas.renderAll();
 
@@ -599,6 +666,8 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
                 offsetY: elementStyles.shadow.offsetY,
               }),
               selectable: true,
+              hasControls: true,
+              hasBorders: true,
             }) as ExtendedFabricText;
             newText.id = "description";
             editorCanvas.add(newText);
@@ -631,6 +700,8 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
                   offsetY: elementStyles.shadow.offsetY,
                 }),
                 selectable: true,
+                hasControls: true,
+                hasBorders: true,
               }) as ExtendedFabricText;
               newText.id = "price";
               editorCanvas.add(newText);
@@ -948,7 +1019,7 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
     editorCanvas.clear();
 
     // Processar os elementos do template
-    template.elements.forEach(async (element) => {
+    template.elements.forEach(async (element: any) => {
       if (element.isBackground) {
         // Carregar o background
         await new Promise<void>((resolve) => {
@@ -993,7 +1064,7 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
         // Recriar outros elementos (textos, etc)
         let obj;
         if (element.type === "text") {
-          obj = new fabric.Text(element.text, {
+          obj = new fabric.Text(element.text || "", {
             ...element,
             selectable: true,
           });
@@ -1026,8 +1097,15 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
           shadow.offsetY = value;
           break;
         case "opacity":
-          if (typeof shadow.opacity === "number") {
-            shadow.opacity = value / 100;
+          // Use a different approach since opacity is not directly supported
+          const currentColor = shadow.color?.toString() || "rgba(0,0,0,1)";
+          const rgbaMatch = currentColor.match(
+            /rgba\((\d+),\s*(\d+),\s*(\d+),\s*[\d.]+\)/
+          );
+
+          if (rgbaMatch) {
+            const newColor = `rgba(${rgbaMatch[1]}, ${rgbaMatch[2]}, ${rgbaMatch[3]}, ${value / 100})`;
+            shadow.color = newColor;
           }
           break;
       }
@@ -1041,161 +1119,693 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
 
   return (
     <div className='flex flex-col gap-4 p-4'>
-      <div className='flex flex-col gap-2'>
+      <div className='flex flex-wrap gap-3'>
         <button
           onClick={() => setIsModalOpen(true)}
-          className='bg-primary-blue hover:bg-primary-blue/90 flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-white'
+          className='flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700'
         >
           <Plus size={16} />
           Criar NOVO KV
         </button>
         <KVGridButton onClick={handleCreateGridKV} />
+
+        <button
+          onClick={() => setShowTemplates(true)}
+          className='flex items-center justify-center gap-2 rounded-md border border-gray-600 bg-gray-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700'
+        >
+          <svg
+            xmlns='http://www.w3.org/2000/svg'
+            width='16'
+            height='16'
+            viewBox='0 0 24 24'
+            fill='none'
+            stroke='currentColor'
+            strokeWidth='2'
+            strokeLinecap='round'
+            strokeLinejoin='round'
+          >
+            <rect x='3' y='3' width='18' height='18' rx='2' ry='2'></rect>
+            <line x1='3' y1='9' x2='21' y2='9'></line>
+            <line x1='9' y1='21' x2='9' y2='9'></line>
+          </svg>
+          Editar KV Existente
+        </button>
       </div>
 
-      <button
-        onClick={() => setShowTemplates(true)}
-        className='hover:bg-primary-blue-dark bg-primary-blue rounded-md px-4 py-2 text-sm text-white'
-      >
-        Editar KV
-      </button>
-
       <KVModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
-        <div className='flex flex-col gap-4 px-5 pt-4'>
-          <h1 className='text-xl font-bold text-primary-grey-300'>
-            Gerador de KV
-          </h1>
+        <div className='flex flex-col gap-6 px-5 py-5'>
+          <div className='flex items-center justify-between'>
+            <h1 className='text-xl font-bold text-primary-grey-300'>
+              Gerador de KV
+            </h1>
+            <div className='flex gap-2'>
+              <button
+                onClick={handleSaveTemplate}
+                className='flex items-center justify-center gap-2 rounded-md bg-primary-green px-4 py-2 text-sm font-medium text-primary-black transition-colors hover:bg-primary-green/90'
+              >
+                <svg
+                  xmlns='http://www.w3.org/2000/svg'
+                  width='16'
+                  height='16'
+                  viewBox='0 0 24 24'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                >
+                  <path d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z'></path>
+                  <polyline points='17 21 17 13 7 13 7 21'></polyline>
+                  <polyline points='7 3 7 8 15 8'></polyline>
+                </svg>
+                Salvar Template
+              </button>
+              <button
+                onClick={handleDownload}
+                className='flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700'
+              >
+                <svg
+                  xmlns='http://www.w3.org/2000/svg'
+                  width='16'
+                  height='16'
+                  viewBox='0 0 24 24'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                >
+                  <path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'></path>
+                  <polyline points='7 10 12 15 17 10'></polyline>
+                  <line x1='12' y1='15' x2='12' y2='3'></line>
+                </svg>
+                Baixar Imagem
+              </button>
+              {/* <button
+                onClick={handleImportToCanvas}
+                className='flex items-center justify-center gap-2 rounded-md border border-blue-500 bg-transparent px-4 py-2 text-sm font-medium text-blue-500 transition-colors hover:bg-blue-500/10'
+              >
+                <svg
+                  xmlns='http://www.w3.org/2000/svg'
+                  width='16'
+                  height='16'
+                  viewBox='0 0 24 24'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                >
+                  <path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'></path>
+                  <polyline points='17 8 12 3 7 8'></polyline>
+                  <line x1='12' y1='3' x2='12' y2='15'></line>
+                </svg>
+                Importar para Canvas
+              </button> */}
+            </div>
+          </div>
 
-          <div className='flex gap-8'>
-            <div className='flex max-h-[80vh] flex-col gap-4 overflow-y-auto pr-4'>
-              <KVForm
-                formData={formData}
-                onFileChange={handleFileChange}
-                onInputChange={handleInputChange}
-                onSearchProduct={handleSearchProduct}
-                isSearching={isSearching}
-              />
+          <div className='flex gap-6'>
+            <div className='flex max-h-[80vh] w-[350px] flex-col gap-5 overflow-y-auto pr-2'>
+              {/* Background Section */}
+              <div className='rounded-lg border border-gray-800 bg-primary-black p-4 shadow-md'>
+                <h3 className='mb-3 flex items-center gap-2 text-base font-semibold text-primary-grey-300'>
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    width='18'
+                    height='18'
+                    viewBox='0 0 24 24'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                  >
+                    <rect
+                      x='3'
+                      y='3'
+                      width='18'
+                      height='18'
+                      rx='2'
+                      ry='2'
+                    ></rect>
+                    <circle cx='8.5' cy='8.5' r='1.5'></circle>
+                    <polyline points='21 15 16 10 5 21'></polyline>
+                  </svg>
+                  Plano de Fundo
+                </h3>
 
+                <div className='flex flex-col gap-3'>
+                  <div className='flex flex-col gap-2'>
+                    <label
+                      htmlFor='background-upload'
+                      className='flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700'
+                    >
+                      <Plus size={16} />
+                      Adicionar Background
+                    </label>
+                    <input
+                      id='background-upload'
+                      type='file'
+                      accept='image/*'
+                      className='hidden'
+                      onChange={(e) => handleFileChange(e, "background")}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Product Information Section */}
+              <div className='rounded-lg border border-gray-800 bg-primary-black p-4 shadow-md'>
+                <h3 className='mb-3 flex items-center gap-2 text-base font-semibold text-primary-grey-300'>
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    width='18'
+                    height='18'
+                    viewBox='0 0 24 24'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                  >
+                    <path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7'></path>
+                    <path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z'></path>
+                  </svg>
+                  Informações do Produto
+                </h3>
+                <KVForm
+                  formData={formData}
+                  onFileChange={handleFileChange}
+                  onInputChange={handleInputChange}
+                  onSearchProduct={handleSearchProduct}
+                  isSearching={isSearching}
+                />
+              </div>
+
+              {/* Product Image Settings */}
               {editorCanvas
                 ?.getObjects()
                 .some((obj) => obj instanceof fabric.Image) && (
-                <div className='flex flex-col gap-4 rounded-lg bg-primary-black p-4'>
-                  <div className='flex items-center justify-between'>
-                    <h3 className='text-lg font-semibold text-primary-grey-300'>
+                <div className='rounded-lg border border-gray-800 bg-primary-black p-4 shadow-md'>
+                  <div className='mb-3 flex items-center justify-between'>
+                    <h3 className='flex items-center gap-2 text-base font-semibold text-primary-grey-300'>
+                      <svg
+                        xmlns='http://www.w3.org/2000/svg'
+                        width='18'
+                        height='18'
+                        viewBox='0 0 24 24'
+                        fill='none'
+                        stroke='currentColor'
+                        strokeWidth='2'
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                      >
+                        <rect
+                          x='3'
+                          y='3'
+                          width='18'
+                          height='18'
+                          rx='2'
+                          ry='2'
+                        ></rect>
+                        <circle cx='8.5' cy='8.5' r='1.5'></circle>
+                        <polyline points='21 15 16 10 5 21'></polyline>
+                      </svg>
                       Imagem do Produto
                     </h3>
-                    <button
-                      onClick={handleRemoveBackground}
-                      disabled={isRemovingBackground}
-                      className='hover:bg-primary-green-dark rounded-md bg-primary-green px-3 py-1 text-sm text-primary-black disabled:opacity-50'
-                    >
-                      {isRemovingBackground ? "Removendo..." : "Remover Fundo"}
-                    </button>
                   </div>
 
                   <div className='space-y-4'>
-                    <div className='flex items-center gap-2'>
-                      <input
-                        type='checkbox'
-                        checked={productShadow.enabled}
-                        onChange={(e) =>
-                          handleProductShadowChange("enabled", e.target.checked)
-                        }
-                        className='h-4 w-4'
-                      />
-                      <label className='text-sm text-primary-grey-300'>
-                        Ativar Sombra
-                      </label>
+                    <button
+                      onClick={handleRemoveBackground}
+                      disabled={isRemovingBackground}
+                      className='flex w-full items-center justify-center gap-2 rounded-md bg-primary-green px-3 py-2 text-sm text-primary-black transition-colors hover:bg-primary-green/90 disabled:opacity-50'
+                    >
+                      {isRemovingBackground ? (
+                        <>
+                          <div className='h-4 w-4 animate-spin rounded-full border-2 border-primary-black border-t-transparent'></div>
+                          <span>Removendo fundo...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg
+                            xmlns='http://www.w3.org/2000/svg'
+                            width='16'
+                            height='16'
+                            viewBox='0 0 24 24'
+                            fill='none'
+                            stroke='currentColor'
+                            strokeWidth='2'
+                            strokeLinecap='round'
+                            strokeLinejoin='round'
+                          >
+                            <path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7'></path>
+                            <path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z'></path>
+                          </svg>
+                          <span>Remover Fundo da Imagem</span>
+                        </>
+                      )}
+                    </button>
+
+                    <div className='mt-4 border-t border-gray-800 pt-4'>
+                      <div className='flex items-center'>
+                        <input
+                          type='checkbox'
+                          id='shadowToggle'
+                          checked={productShadow.enabled}
+                          onChange={(e) =>
+                            handleProductShadowChange(
+                              "enabled",
+                              e.target.checked
+                            )
+                          }
+                          className='h-4 w-4 rounded border-gray-400 accent-blue-500'
+                        />
+                        <label
+                          htmlFor='shadowToggle'
+                          className='ml-2 text-sm text-primary-grey-300'
+                        >
+                          Ativar Sombra
+                        </label>
+                      </div>
+
+                      {productShadow.enabled && (
+                        <div className='mt-3 space-y-3'>
+                          <div className='flex flex-col gap-1'>
+                            <div className='mb-1 flex justify-between'>
+                              <label className='text-xs text-primary-grey-300'>
+                                Desfoque ({productShadow.blur}px)
+                              </label>
+                            </div>
+                            <input
+                              type='range'
+                              min='0'
+                              max='50'
+                              value={productShadow.blur}
+                              onChange={(e) =>
+                                handleProductShadowChange(
+                                  "blur",
+                                  Number(e.target.value)
+                                )
+                              }
+                              className='w-full accent-blue-500'
+                            />
+                          </div>
+
+                          <div className='flex flex-col gap-1'>
+                            <div className='mb-1 flex justify-between'>
+                              <label className='text-xs text-primary-grey-300'>
+                                Distância ({productShadow.offsetY}px)
+                              </label>
+                            </div>
+                            <input
+                              type='range'
+                              min='0'
+                              max='50'
+                              value={productShadow.offsetY}
+                              onChange={(e) =>
+                                handleProductShadowChange(
+                                  "offsetY",
+                                  Number(e.target.value)
+                                )
+                              }
+                              className='w-full accent-blue-500'
+                            />
+                          </div>
+
+                          <div className='flex flex-col gap-1'>
+                            <div className='mb-1 flex justify-between'>
+                              <label className='text-xs text-primary-grey-300'>
+                                Opacidade ({productShadow.opacity})
+                              </label>
+                            </div>
+                            <input
+                              type='range'
+                              min='0'
+                              max='1'
+                              step='0.1'
+                              value={productShadow.opacity}
+                              onChange={(e) =>
+                                handleProductShadowChange(
+                                  "opacity",
+                                  Number(e.target.value)
+                                )
+                              }
+                              className='w-full accent-blue-500'
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
-
-                    {productShadow.enabled && (
-                      <>
-                        <div className='flex flex-col gap-2'>
-                          <label className='text-sm text-primary-grey-300'>
-                            Desfoque
-                          </label>
-                          <input
-                            type='range'
-                            min='0'
-                            max='50'
-                            value={productShadow.blur}
-                            onChange={(e) =>
-                              handleProductShadowChange(
-                                "blur",
-                                Number(e.target.value)
-                              )
-                            }
-                            className='w-full'
-                          />
-                        </div>
-
-                        <div className='flex flex-col gap-2'>
-                          <label className='text-sm text-primary-grey-300'>
-                            Distância
-                          </label>
-                          <input
-                            type='range'
-                            min='0'
-                            max='50'
-                            value={productShadow.offsetY}
-                            onChange={(e) =>
-                              handleProductShadowChange(
-                                "offsetY",
-                                Number(e.target.value)
-                              )
-                            }
-                            className='w-full'
-                          />
-                        </div>
-
-                        <div className='flex flex-col gap-2'>
-                          <label className='text-sm text-primary-grey-300'>
-                            Opacidade
-                          </label>
-                          <input
-                            type='range'
-                            min='0'
-                            max='1'
-                            step='0.1'
-                            value={productShadow.opacity}
-                            onChange={(e) =>
-                              handleProductShadowChange(
-                                "opacity",
-                                Number(e.target.value)
-                              )
-                            }
-                            className='w-full'
-                          />
-                        </div>
-                      </>
-                    )}
                   </div>
                 </div>
               )}
 
-              <KVElementEditor
-                selectedElement={selectedElement}
-                elementStyles={elementStyles}
-                onStyleChange={handleStyleChange}
-              />
+              {/* Personalização Section */}
+              <div className='rounded-lg border border-gray-800 bg-primary-black p-4 shadow-md'>
+                <h3 className='mb-3 flex items-center gap-2 text-base font-semibold text-primary-grey-300'>
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    width='18'
+                    height='18'
+                    viewBox='0 0 24 24'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                  >
+                    <circle cx='12' cy='12' r='3'></circle>
+                    <path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z'></path>
+                  </svg>
+                  Personalização
+                </h3>
 
-              <div className='flex gap-2'>
-                <button
-                  onClick={handleSaveTemplate}
-                  className='hover:bg-primary-green-dark mt-4 rounded-md bg-primary-green px-4 py-2 text-sm text-primary-black'
-                >
-                  Salvar Template
-                </button>
+                <div className='space-y-4'>
+                  <div className='mt-2 space-y-3'>
+                    <p className='text-primary-grey-400 mb-2 text-xs font-medium'>
+                      Posicionamento do KV
+                    </p>
 
-                <button
-                  onClick={handleDownload}
-                  className='hover:bg-primary-blue-dark bg-primary-blue mt-4 rounded-md px-4 py-2 text-sm text-white'
-                >
-                  Baixar Imagem
-                </button>
+                    <div className='flex flex-col gap-1'>
+                      <div className='mb-1 flex justify-between'>
+                        <label className='text-xs text-primary-grey-300'>
+                          Posição do Texto
+                        </label>
+                      </div>
+                      <div className='grid grid-cols-3 gap-2'>
+                        <button
+                          className='bg-primary-grey-800 hover:bg-primary-grey-700 flex flex-col items-center justify-center rounded-md p-2 text-xs text-white transition-colors'
+                          onClick={() => {
+                            const descriptionText = editorCanvas
+                              ?.getObjects()
+                              .find((obj) => (obj as any).id === "description");
+                            const priceText = editorCanvas
+                              ?.getObjects()
+                              .find((obj) => (obj as any).id === "price");
+
+                            if (descriptionText) {
+                              descriptionText.set({
+                                top: CANVAS_HEIGHT * 0.7,
+                                left: CANVAS_WIDTH / 2,
+                              });
+                            }
+
+                            if (priceText) {
+                              priceText.set({
+                                top: CANVAS_HEIGHT * 0.8,
+                                left: CANVAS_WIDTH / 2,
+                              });
+                            }
+
+                            editorCanvas?.renderAll();
+                          }}
+                        >
+                          <svg
+                            xmlns='http://www.w3.org/2000/svg'
+                            width='20'
+                            height='20'
+                            viewBox='0 0 24 24'
+                            fill='none'
+                            stroke='currentColor'
+                            strokeWidth='2'
+                            strokeLinecap='round'
+                            strokeLinejoin='round'
+                          >
+                            <rect
+                              x='3'
+                              y='3'
+                              width='18'
+                              height='18'
+                              rx='2'
+                              ry='2'
+                            ></rect>
+                            <line x1='3' y1='15' x2='21' y2='15'></line>
+                          </svg>
+                          <span>Abaixo</span>
+                        </button>
+
+                        <button
+                          className='bg-primary-grey-800 hover:bg-primary-grey-700 flex flex-col items-center justify-center rounded-md p-2 text-xs text-white transition-colors'
+                          onClick={() => {
+                            const descriptionText = editorCanvas
+                              ?.getObjects()
+                              .find((obj) => (obj as any).id === "description");
+                            const priceText = editorCanvas
+                              ?.getObjects()
+                              .find((obj) => (obj as any).id === "price");
+
+                            if (descriptionText) {
+                              descriptionText.set({
+                                top: CANVAS_HEIGHT * 0.3,
+                                left: CANVAS_WIDTH / 2,
+                              });
+                            }
+
+                            if (priceText) {
+                              priceText.set({
+                                top: CANVAS_HEIGHT * 0.4,
+                                left: CANVAS_WIDTH / 2,
+                              });
+                            }
+
+                            editorCanvas?.renderAll();
+                          }}
+                        >
+                          <svg
+                            xmlns='http://www.w3.org/2000/svg'
+                            width='20'
+                            height='20'
+                            viewBox='0 0 24 24'
+                            fill='none'
+                            stroke='currentColor'
+                            strokeWidth='2'
+                            strokeLinecap='round'
+                            strokeLinejoin='round'
+                          >
+                            <rect
+                              x='3'
+                              y='3'
+                              width='18'
+                              height='18'
+                              rx='2'
+                              ry='2'
+                            ></rect>
+                            <line x1='3' y1='9' x2='21' y2='9'></line>
+                          </svg>
+                          <span>Acima</span>
+                        </button>
+
+                        <button
+                          className='bg-primary-grey-800 hover:bg-primary-grey-700 flex flex-col items-center justify-center rounded-md p-2 text-xs text-white transition-colors'
+                          onClick={() => {
+                            const descriptionText = editorCanvas
+                              ?.getObjects()
+                              .find((obj) => (obj as any).id === "description");
+                            const priceText = editorCanvas
+                              ?.getObjects()
+                              .find((obj) => (obj as any).id === "price");
+
+                            if (descriptionText) {
+                              descriptionText.set({
+                                top: CANVAS_HEIGHT * 0.5,
+                                left: CANVAS_WIDTH / 2,
+                              });
+                            }
+
+                            if (priceText) {
+                              priceText.set({
+                                top: CANVAS_HEIGHT * 0.6,
+                                left: CANVAS_WIDTH / 2,
+                              });
+                            }
+
+                            editorCanvas?.renderAll();
+                          }}
+                        >
+                          <svg
+                            xmlns='http://www.w3.org/2000/svg'
+                            width='20'
+                            height='20'
+                            viewBox='0 0 24 24'
+                            fill='none'
+                            stroke='currentColor'
+                            strokeWidth='2'
+                            strokeLinecap='round'
+                            strokeLinejoin='round'
+                          >
+                            <rect
+                              x='3'
+                              y='3'
+                              width='18'
+                              height='18'
+                              rx='2'
+                              ry='2'
+                            ></rect>
+                            <line x1='12' y1='3' x2='12' y2='21'></line>
+                          </svg>
+                          <span>Centro</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className='mt-4 border-t border-gray-800 pt-4'>
+                    <p className='text-primary-grey-400 mb-2 text-xs font-medium'>
+                      Estilos Rápidos
+                    </p>
+
+                    <div className='grid grid-cols-2 gap-2'>
+                      <button
+                        className='bg-primary-grey-800 hover:bg-primary-grey-700 flex items-center justify-center gap-2 rounded-md p-2 text-xs text-white transition-colors'
+                        onClick={() => {
+                          // Estilo promocional
+                          const descriptionText = editorCanvas
+                            ?.getObjects()
+                            .find(
+                              (obj) => (obj as any).id === "description"
+                            ) as any;
+                          const priceText = editorCanvas
+                            ?.getObjects()
+                            .find((obj) => (obj as any).id === "price") as any;
+
+                          if (descriptionText) {
+                            descriptionText.set({
+                              fill: "#FFFFFF",
+                              fontSize: 42,
+                              fontWeight: "700",
+                              shadow: new fabric.Shadow({
+                                color: "rgba(0, 0, 0, 0.5)",
+                                blur: 20,
+                                offsetX: 0,
+                                offsetY: 5,
+                              }),
+                            });
+                          }
+
+                          if (priceText) {
+                            priceText.set({
+                              fill: "#FF0000",
+                              fontSize: 60,
+                              fontWeight: "900",
+                              shadow: new fabric.Shadow({
+                                color: "rgba(0, 0, 0, 0.5)",
+                                blur: 15,
+                                offsetX: 0,
+                                offsetY: 5,
+                              }),
+                            });
+                          }
+
+                          editorCanvas?.renderAll();
+                        }}
+                      >
+                        <svg
+                          xmlns='http://www.w3.org/2000/svg'
+                          width='18'
+                          height='18'
+                          viewBox='0 0 24 24'
+                          fill='none'
+                          stroke='currentColor'
+                          strokeWidth='2'
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                        >
+                          <polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'></polygon>
+                        </svg>
+                        <span>Promocional</span>
+                      </button>
+
+                      <button
+                        className='bg-primary-grey-800 hover:bg-primary-grey-700 flex items-center justify-center gap-2 rounded-md p-2 text-xs text-white transition-colors'
+                        onClick={() => {
+                          // Estilo minimalista
+                          const descriptionText = editorCanvas
+                            ?.getObjects()
+                            .find(
+                              (obj) => (obj as any).id === "description"
+                            ) as any;
+                          const priceText = editorCanvas
+                            ?.getObjects()
+                            .find((obj) => (obj as any).id === "price") as any;
+
+                          if (descriptionText) {
+                            descriptionText.set({
+                              fill: "#FFFFFF",
+                              fontSize: 36,
+                              fontWeight: "400",
+                              shadow: null,
+                              fontFamily: "Arial",
+                            });
+                          }
+
+                          if (priceText) {
+                            priceText.set({
+                              fill: "#FFFFFF",
+                              fontSize: 36,
+                              fontWeight: "400",
+                              shadow: null,
+                              fontFamily: "Arial",
+                            });
+                          }
+
+                          editorCanvas?.renderAll();
+                        }}
+                      >
+                        <svg
+                          xmlns='http://www.w3.org/2000/svg'
+                          width='18'
+                          height='18'
+                          viewBox='0 0 24 24'
+                          fill='none'
+                          stroke='currentColor'
+                          strokeWidth='2'
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                        >
+                          <circle cx='12' cy='12' r='10'></circle>
+                          <line x1='12' y1='8' x2='12' y2='16'></line>
+                          <line x1='8' y1='12' x2='16' y2='12'></line>
+                        </svg>
+                        <span>Minimalista</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
+
+              {/* Element Editor */}
+              {selectedElement && (
+                <div className='rounded-lg border border-gray-800 bg-primary-black p-4 shadow-md'>
+                  <h3 className='mb-3 flex items-center gap-2 text-base font-semibold text-primary-grey-300'>
+                    <svg
+                      xmlns='http://www.w3.org/2000/svg'
+                      width='18'
+                      height='18'
+                      viewBox='0 0 24 24'
+                      fill='none'
+                      stroke='currentColor'
+                      strokeWidth='2'
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                    >
+                      <path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7'></path>
+                      <path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z'></path>
+                    </svg>
+                    Editar Elemento
+                  </h3>
+                  <KVElementEditor
+                    selectedElement={selectedElement}
+                    elementStyles={elementStyles}
+                    onStyleChange={handleStyleChange}
+                  />
+                </div>
+              )}
             </div>
 
-            <div className='sticky top-0'>
+            {/* Canvas Area */}
+            <div className='sticky top-0 flex-grow'>
               <KVCanvas
                 editorCanvasRef={editorCanvasRef}
                 onCanvasReady={handleCanvasReady}
