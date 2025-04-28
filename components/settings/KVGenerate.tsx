@@ -45,6 +45,8 @@ const CANVAS_WIDTH = 1080;
 const CANVAS_HEIGHT = 1920;
 const PRICE_BOX_HEIGHT = 140;
 const DISCLAIMER_BOX_HEIGHT = 100;
+const DEFAULT_PRODUCT_IMAGE =
+  "https://thumb.ac-illust.com/b1/b170870007dfa419295d949814474ab2_t.jpeg";
 
 const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -237,6 +239,98 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
     return `https://images.weserv.nl/?url=${encodeURIComponent(url)}&n=1`;
   };
 
+  const loadProductImage = (
+    imageUrl: string,
+    onSuccess: (img: fabric.Image) => void
+  ) => {
+    if (!editorCanvas) return;
+
+    const handleImageError = () => {
+      console.log("Error loading image, using default image instead");
+
+      // Fallback to default image when there's an error
+      fabric.Image.fromURL(
+        DEFAULT_PRODUCT_IMAGE,
+        (img) => {
+          if (!editorCanvas) return;
+
+          const scale = Math.min(
+            (CANVAS_WIDTH * 0.7) / img.width!,
+            (CANVAS_HEIGHT * 0.4) / img.height!
+          );
+
+          img.set({
+            left: CANVAS_WIDTH / 2,
+            top: CANVAS_HEIGHT * 0.45,
+            originX: "center",
+            originY: "center",
+            scaleX: scale,
+            scaleY: scale,
+            selectable: true,
+          });
+
+          if (productShadow.enabled) {
+            img.set(
+              "shadow",
+              new fabric.Shadow({
+                color: `rgba(0,0,0,${productShadow.opacity})`,
+                blur: productShadow.blur,
+                offsetX: 0,
+                offsetY: productShadow.offsetY,
+              })
+            );
+          }
+
+          onSuccess(img);
+        },
+        { crossOrigin: "anonymous" }
+      );
+    };
+
+    // Try to load the proxied image with error handling
+    const img = new Image();
+    img.onload = () => {
+      fabric.Image.fromURL(
+        imageUrl,
+        (fabricImg) => {
+          if (!editorCanvas) return;
+
+          const scale = Math.min(
+            (CANVAS_WIDTH * 0.7) / fabricImg.width!,
+            (CANVAS_HEIGHT * 0.4) / fabricImg.height!
+          );
+
+          fabricImg.set({
+            left: CANVAS_WIDTH / 2,
+            top: CANVAS_HEIGHT * 0.45,
+            originX: "center",
+            originY: "center",
+            scaleX: scale,
+            scaleY: scale,
+            selectable: true,
+          });
+
+          if (productShadow.enabled) {
+            fabricImg.set(
+              "shadow",
+              new fabric.Shadow({
+                color: `rgba(0,0,0,${productShadow.opacity})`,
+                blur: productShadow.blur,
+                offsetX: 0,
+                offsetY: productShadow.offsetY,
+              })
+            );
+          }
+
+          onSuccess(fabricImg);
+        },
+        { crossOrigin: "anonymous" }
+      );
+    };
+    img.onerror = handleImageError;
+    img.src = imageUrl;
+  };
+
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
     type: "background" | "productImage"
@@ -249,81 +343,80 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
       if (!event.target?.result || !editorCanvas) return;
 
       const imgUrl = event.target.result.toString();
-      fabric.Image.fromURL(
-        imgUrl,
-        (img) => {
+
+      if (type === "background") {
+        fabric.Image.fromURL(imgUrl, (img) => {
           if (!editorCanvas) return;
 
-          if (type === "background") {
-            // Calcular a escala para cobrir todo o canvas mantendo a proporção
-            const scaleToFit = Math.max(
-              CANVAS_WIDTH / img.width!,
-              CANVAS_HEIGHT / img.height!
+          // Calcular a escala para cobrir todo o canvas mantendo a proporção
+          const scaleToFit = Math.max(
+            CANVAS_WIDTH / img.width!,
+            CANVAS_HEIGHT / img.height!
+          );
+
+          // Aplicar a escala e centralizar
+          img.set({
+            scaleX: scaleToFit,
+            scaleY: scaleToFit,
+            left: CANVAS_WIDTH / 2,
+            top: CANVAS_HEIGHT / 2,
+            originX: "center",
+            originY: "center",
+            selectable: true,
+          });
+
+          // Definir como background
+          editorCanvas.setBackgroundImage(
+            img,
+            editorCanvas.renderAll.bind(editorCanvas)
+          );
+        });
+      } else {
+        // Lógica para imagem do produto
+        fabric.Image.fromURL(imgUrl, (img) => {
+          if (!editorCanvas) return;
+
+          const scale = Math.min(
+            (CANVAS_WIDTH * 0.7) / img.width!,
+            (CANVAS_HEIGHT * 0.4) / img.height!
+          );
+
+          const extendedImg = img as ExtendedFabricObject;
+          extendedImg.set({
+            left: CANVAS_WIDTH / 2,
+            top: CANVAS_HEIGHT * 0.45,
+            originX: "center",
+            originY: "center",
+            scaleX: scale,
+            scaleY: scale,
+            selectable: true,
+          });
+          extendedImg.id = "productImage";
+
+          if (productShadow.enabled) {
+            extendedImg.set(
+              "shadow",
+              new fabric.Shadow({
+                color: `rgba(0,0,0,${productShadow.opacity})`,
+                blur: productShadow.blur,
+                offsetX: 0,
+                offsetY: productShadow.offsetY,
+              })
             );
-
-            // Aplicar a escala e centralizar
-            img.set({
-              scaleX: scaleToFit,
-              scaleY: scaleToFit,
-              left: CANVAS_WIDTH / 2,
-              top: CANVAS_HEIGHT / 2,
-              originX: "center",
-              originY: "center",
-              selectable: true,
-              crossOrigin: "anonymous",
-            });
-
-            // Definir como background
-            editorCanvas.setBackgroundImage(
-              img,
-              editorCanvas.renderAll.bind(editorCanvas)
-            );
-          } else {
-            // Lógica para imagem do produto
-            const scale = Math.min(
-              (CANVAS_WIDTH * 0.7) / img.width!,
-              (CANVAS_HEIGHT * 0.4) / img.height!
-            );
-
-            const extendedImg = img as ExtendedFabricObject;
-            extendedImg.set({
-              left: CANVAS_WIDTH / 2,
-              top: CANVAS_HEIGHT * 0.45,
-              originX: "center",
-              originY: "center",
-              scaleX: scale,
-              scaleY: scale,
-              selectable: true,
-              crossOrigin: "anonymous",
-            });
-            extendedImg.id = "productImage";
-
-            if (productShadow.enabled) {
-              extendedImg.set(
-                "shadow",
-                new fabric.Shadow({
-                  color: `rgba(0,0,0,${productShadow.opacity})`,
-                  blur: productShadow.blur,
-                  offsetX: 0,
-                  offsetY: productShadow.offsetY,
-                })
-              );
-            }
-
-            // Remover imagem anterior do produto, se existir
-            const existingProductImage = editorCanvas
-              .getObjects()
-              .find((obj) => obj instanceof fabric.Image);
-            if (existingProductImage) {
-              editorCanvas.remove(existingProductImage);
-            }
-
-            editorCanvas.add(extendedImg);
           }
-          editorCanvas.renderAll();
-        },
-        { crossOrigin: "anonymous" }
-      );
+
+          // Remover imagem anterior do produto, se existir
+          const existingProductImage = editorCanvas
+            .getObjects()
+            .find((obj) => obj instanceof fabric.Image);
+          if (existingProductImage) {
+            editorCanvas.remove(existingProductImage);
+          }
+
+          editorCanvas.add(extendedImg);
+        });
+      }
+      editorCanvas.renderAll();
     };
     reader.readAsDataURL(file);
 
@@ -461,65 +554,68 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
         // Usar o proxy para a imagem do produto
         const proxiedImageUrl = proxyImage(product.link_imagem);
 
-        fabric.Image.fromURL(
-          proxiedImageUrl,
-          (img) => {
-            if (!editorCanvas) return;
+        // Load the product image with error handling
+        loadProductImage(proxiedImageUrl, (img) => {
+          if (!editorCanvas) return;
 
-            const scale = Math.min(
-              (CANVAS_WIDTH * 0.7) / img.width!,
-              (CANVAS_HEIGHT * 0.4) / img.height!
-            );
+          // Remover imagem anterior do produto, se existir
+          const existingProductImage = editorCanvas
+            .getObjects()
+            .find((obj) => obj instanceof fabric.Image);
+          if (existingProductImage) {
+            editorCanvas.remove(existingProductImage);
+          }
 
-            img.set({
-              left: CANVAS_WIDTH / 2,
-              top: CANVAS_HEIGHT * 0.45,
+          editorCanvas.add(img);
+          editorCanvas.renderAll();
+
+          // Criar ou atualizar textos
+          const objects = editorCanvas.getObjects() as ExtendedFabricText[];
+
+          // Atualizar descrição
+          const descriptionText = objects.find(
+            (obj) => obj.id === "description"
+          );
+          if (descriptionText) {
+            (descriptionText as fabric.Text).set({
+              text: product.descricao.toUpperCase(),
+            });
+          } else {
+            const newText = new fabric.Text(product.descricao.toUpperCase(), {
+              left: elementStyles.left,
+              top: elementStyles.top,
+              fontSize: elementStyles.fontSize,
+              fill: elementStyles.fill,
+              fontFamily: "Arial",
+              fontWeight: "700",
               originX: "center",
               originY: "center",
-              scaleX: scale,
-              scaleY: scale,
+              stroke: elementStyles.stroke,
+              strokeWidth: elementStyles.strokeWidth,
+              shadow: new fabric.Shadow({
+                color: elementStyles.shadow.color,
+                blur: elementStyles.shadow.blur,
+                offsetX: elementStyles.shadow.offsetX,
+                offsetY: elementStyles.shadow.offsetY,
+              }),
               selectable: true,
-              crossOrigin: "anonymous",
-            });
+            }) as ExtendedFabricText;
+            newText.id = "description";
+            editorCanvas.add(newText);
+          }
 
-            if (productShadow.enabled) {
-              img.set(
-                "shadow",
-                new fabric.Shadow({
-                  color: `rgba(0,0,0,${productShadow.opacity})`,
-                  blur: productShadow.blur,
-                  offsetX: 0,
-                  offsetY: productShadow.offsetY,
-                })
-              );
-            }
-
-            // Remover imagem anterior do produto, se existir
-            const existingProductImage = editorCanvas
-              .getObjects()
-              .find((obj) => obj instanceof fabric.Image);
-            if (existingProductImage) {
-              editorCanvas.remove(existingProductImage);
-            }
-
-            editorCanvas.add(img);
-            editorCanvas.renderAll();
-
-            // Criar ou atualizar textos
-            const objects = editorCanvas.getObjects() as ExtendedFabricText[];
-
-            // Atualizar descrição
-            const descriptionText = objects.find(
-              (obj) => obj.id === "description"
-            );
-            if (descriptionText) {
-              (descriptionText as fabric.Text).set({
-                text: product.descricao.toUpperCase(),
+          // Atualizar preço
+          if (product.vl_oferta > 0) {
+            const priceText = objects.find((obj) => obj.id === "price");
+            const priceValue = `R$ ${product.vl_oferta.toFixed(2)}`;
+            if (priceText) {
+              (priceText as fabric.Text).set({
+                text: priceValue,
               });
             } else {
-              const newText = new fabric.Text(product.descricao.toUpperCase(), {
+              const newText = new fabric.Text(priceValue, {
                 left: elementStyles.left,
-                top: elementStyles.top,
+                top: elementStyles.top + 60,
                 fontSize: elementStyles.fontSize,
                 fill: elementStyles.fill,
                 fontFamily: "Arial",
@@ -536,47 +632,13 @@ const KVGenerate = ({ fabricRef, syncShapeInStorage }: KVGenerateProps) => {
                 }),
                 selectable: true,
               }) as ExtendedFabricText;
-              newText.id = "description";
+              newText.id = "price";
               editorCanvas.add(newText);
             }
+          }
 
-            // Atualizar preço
-            if (product.vl_oferta > 0) {
-              const priceText = objects.find((obj) => obj.id === "price");
-              const priceValue = `R$ ${product.vl_oferta.toFixed(2)}`;
-              if (priceText) {
-                (priceText as fabric.Text).set({
-                  text: priceValue,
-                });
-              } else {
-                const newText = new fabric.Text(priceValue, {
-                  left: elementStyles.left,
-                  top: elementStyles.top + 60,
-                  fontSize: elementStyles.fontSize,
-                  fill: elementStyles.fill,
-                  fontFamily: "Arial",
-                  fontWeight: "700",
-                  originX: "center",
-                  originY: "center",
-                  stroke: elementStyles.stroke,
-                  strokeWidth: elementStyles.strokeWidth,
-                  shadow: new fabric.Shadow({
-                    color: elementStyles.shadow.color,
-                    blur: elementStyles.shadow.blur,
-                    offsetX: elementStyles.shadow.offsetX,
-                    offsetY: elementStyles.shadow.offsetY,
-                  }),
-                  selectable: true,
-                }) as ExtendedFabricText;
-                newText.id = "price";
-                editorCanvas.add(newText);
-              }
-            }
-
-            editorCanvas.renderAll();
-          },
-          { crossOrigin: "anonymous" }
-        );
+          editorCanvas.renderAll();
+        });
       }
     } catch (error) {
       console.error("Error fetching product:", error);

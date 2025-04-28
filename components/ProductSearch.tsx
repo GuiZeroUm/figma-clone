@@ -24,6 +24,29 @@ const ProductSearch = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
   const [showBulkGenerator, setShowBulkGenerator] = useState(false);
+  const [imageCache] = useState<Set<string>>(new Set());
+
+  // Usando uma imagem local para evitar problemas de CORS
+  const DEFAULT_IMAGE =
+    "https://thumb.ac-illust.com/b1/b170870007dfa419295d949814474ab2_t.jpeg";
+
+  const handleImageError = (productId: string) => {
+    if (!imageCache.has(productId)) {
+      imageCache.add(productId);
+      return true;
+    }
+    return false;
+  };
+
+  const checkImageExists = async (url: string): Promise<boolean> => {
+    if (!url) return false;
+    try {
+      const response = await fetch(url, { method: "HEAD" });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  };
 
   const handleSearchProduct = async () => {
     if (!productCode) return;
@@ -37,7 +60,19 @@ const ProductSearch = () => {
         throw new Error("Failed to fetch product data");
       }
       const data = await response.json();
-      setSearchResults(data);
+
+      // Verificar cada imagem antes de adicionar ao resultado
+      const productsWithValidImages = await Promise.all(
+        data.map(async (product: Product) => {
+          const hasValidImage = await checkImageExists(product.link_imagem);
+          return {
+            ...product,
+            link_imagem: hasValidImage ? product.link_imagem : DEFAULT_IMAGE,
+          };
+        })
+      );
+
+      setSearchResults(productsWithValidImages);
     } catch (error) {
       console.error("Error fetching product:", error);
       setSearchResults([]);
@@ -175,11 +210,19 @@ const ProductSearch = () => {
                       <div className='group relative h-full w-full cursor-move'>
                         <div className='relative h-full w-full'>
                           <Image
-                            src={product.link_imagem}
+                            src={product.link_imagem || DEFAULT_IMAGE}
                             alt={product.descricao}
                             fill
                             sizes='(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw'
                             className='object-contain transition-transform duration-200 group-hover:scale-105'
+                            onError={(e) => {
+                              e.preventDefault();
+                              const target = e.target as HTMLImageElement;
+                              if (target.src !== DEFAULT_IMAGE) {
+                                target.src = DEFAULT_IMAGE;
+                              }
+                              target.onerror = null;
+                            }}
                           />
                         </div>
                         <div className='absolute inset-0 flex items-center justify-center rounded-md bg-primary-green/10 opacity-0 transition-opacity duration-200 group-hover:opacity-100'>

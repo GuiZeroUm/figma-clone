@@ -39,6 +39,8 @@ interface GridCell extends fabric.Rect {
 
 const CANVAS_WIDTH = 1080;
 const CANVAS_HEIGHT = 1920;
+const DEFAULT_PRODUCT_IMAGE =
+  "https://thumb.ac-illust.com/b1/b170870007dfa419295d949814474ab2_t.jpeg";
 
 // Grid layout presets
 const GRID_LAYOUTS = {
@@ -72,6 +74,11 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
   // Adicionar estados para controle de grid personalizada
   const [customRows, setCustomRows] = useState<number>(2);
   const [customCols, setCustomCols] = useState<number>(2);
+  // Estado para controlar a remoção de fundo
+  const [isRemovingBackground, setIsRemovingBackground] = useState(false);
+  // Estado para armazenar a imagem selecionada para remoção de fundo
+  const [selectedProductImage, setSelectedProductImage] =
+    useState<fabric.Image | null>(null);
 
   const [formData, setFormData] = useState<FormData>({
     description: "",
@@ -399,6 +406,90 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
   const proxyImage = (url: string) => {
     // Usar um serviço de proxy de imagem para evitar problemas de CORS
     return `https://images.weserv.nl/?url=${encodeURIComponent(url)}&n=1`;
+  };
+
+  // Função para carregar imagem com fallback para imagem padrão
+  const loadProductImage = (
+    imageUrl: string,
+    onSuccess: (img: fabric.Image) => void,
+    cellId: string,
+    cellInfo: {
+      maxWidth: number;
+      maxHeight: number;
+      left: number;
+      top: number;
+    }
+  ) => {
+    if (!editorCanvas) return;
+
+    const handleImageError = () => {
+      console.log("Error loading image, using default image instead");
+
+      // Fallback to default image when there's an error
+      fabric.Image.fromURL(
+        DEFAULT_PRODUCT_IMAGE,
+        (img) => {
+          if (!editorCanvas) return;
+
+          const scale = Math.min(
+            cellInfo.maxWidth / img.width!,
+            cellInfo.maxHeight / img.height!
+          );
+
+          // Salvar cellId e outros dados no elemento de imagem
+          (img as any).cellId = cellId;
+          (img as any).elementType = "productImage";
+
+          img.set({
+            left: cellInfo.left,
+            top: cellInfo.top,
+            originX: "center",
+            originY: "center",
+            scaleX: scale,
+            scaleY: scale,
+            selectable: true,
+          });
+
+          onSuccess(img);
+        },
+        { crossOrigin: "anonymous" }
+      );
+    };
+
+    // Try to load the proxied image with error handling
+    const img = new Image();
+    img.onload = () => {
+      fabric.Image.fromURL(
+        imageUrl,
+        (fabricImg) => {
+          if (!editorCanvas) return;
+
+          const scale = Math.min(
+            cellInfo.maxWidth / fabricImg.width!,
+            cellInfo.maxHeight / fabricImg.height!
+          );
+
+          // Salvar cellId e outros dados no elemento de imagem
+          (fabricImg as any).cellId = cellId;
+          (fabricImg as any).elementType = "productImage";
+
+          fabricImg.set({
+            left: cellInfo.left,
+            top: cellInfo.top,
+            originX: "center",
+            originY: "center",
+            scaleX: scale,
+            scaleY: scale,
+            selectable: true,
+          });
+
+          onSuccess(fabricImg);
+        },
+        { crossOrigin: "anonymous" }
+      );
+    };
+    img.onerror = handleImageError;
+    img.src = imageUrl;
   };
 
   const handleExportGrid = () => {
@@ -772,32 +863,14 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
         // Add product image
         const proxiedImageUrl = proxyImage(product.link_imagem);
 
-        fabric.Image.fromURL(
+        // Usar o novo método loadProductImage para garantir fallback para imagem padrão
+        loadProductImage(
           proxiedImageUrl,
           (img) => {
             if (!editorCanvas) return;
 
-            // Calcular escala para caber na região da imagem
-            const maxWidth = cellWidth * 0.9;
-            const maxHeight = imageRegionHeight * 0.9;
-            const scale = Math.min(
-              maxWidth / img.width!,
-              maxHeight / img.height!
-            );
-
-            // Salvar cellId e outros dados no elemento de imagem
-            (img as any).cellId = cellId;
-            (img as any).elementType = "productImage";
-
-            img.set({
-              left: cellLeft,
-              top: imageTop,
-              originX: "center",
-              originY: "center",
-              scaleX: scale,
-              scaleY: scale,
-              selectable: true,
-            });
+            // Salvar a imagem para uso posterior no botão de remover fundo
+            setSelectedProductImage(img);
 
             // Add to canvas
             editorCanvas.add(img);
@@ -902,7 +975,13 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
               setSuccessMessage(null);
             }, 3000);
           },
-          { crossOrigin: "anonymous" }
+          cellId!,
+          {
+            maxWidth: cellWidth * 0.9,
+            maxHeight: imageRegionHeight * 0.9,
+            left: cellLeft,
+            top: imageTop,
+          }
         );
       } else {
         alert("Nenhum produto encontrado com este código.");
@@ -912,6 +991,111 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
       alert("Erro ao buscar produto. Por favor, tente novamente.");
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  // Implementação da funcionalidade de remoção de fundo
+  const handleRemoveBackgroundImage = async () => {
+    if (!editorCanvas) return;
+
+    // Verificar se temos uma imagem selecionada ou encontrar a imagem do produto na célula selecionada
+    let productImage = selectedProductImage;
+
+    if (!productImage && selectedCell && selectedCell.cellId) {
+      // Procurar pela imagem na célula selecionada
+      productImage =
+        (editorCanvas
+          .getObjects()
+          .find(
+            (obj) =>
+              obj instanceof fabric.Image &&
+              (obj as any).cellId === selectedCell.cellId &&
+              (obj as any).elementType === "productImage"
+          ) as fabric.Image) || null;
+    }
+
+    if (!productImage) {
+      alert(
+        "Nenhuma imagem de produto encontrada. Selecione uma célula com produto."
+      );
+      return;
+    }
+
+    try {
+      setIsRemovingBackground(true);
+
+      // Obter a imagem atual como base64
+      const dataURL = productImage.toDataURL({
+        format: "png",
+        quality: 1,
+      });
+
+      // Extrair a parte base64 da dataURL
+      const base64Data = dataURL.split(",")[1];
+
+      // Enviar para a API local
+      const response = await fetch("http://172.16.23.35:8000/remover-fundo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          image: base64Data,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Falha ao remover o fundo");
+      }
+
+      const data = await response.json();
+
+      // Criar uma nova imagem com o fundo removido
+      fabric.Image.fromURL(data.processedImage, (newImg) => {
+        if (!editorCanvas) return;
+
+        // Preservar as propriedades da imagem original
+        newImg.set({
+          left: productImage!.left,
+          top: productImage!.top,
+          scaleX: productImage!.scaleX,
+          scaleY: productImage!.scaleY,
+          angle: productImage!.angle,
+          flipX: productImage!.flipX,
+          flipY: productImage!.flipY,
+          skewX: productImage!.skewX,
+          skewY: productImage!.skewY,
+          originX: productImage!.originX,
+          originY: productImage!.originY,
+          selectable: true,
+        });
+
+        // Copiar os metadados (cellId e elementType)
+        (newImg as any).cellId = (productImage as any).cellId;
+        (newImg as any).elementType = "productImage";
+
+        // Substituir a imagem antiga pela nova
+        editorCanvas.remove(productImage!);
+        editorCanvas.add(newImg);
+        editorCanvas.renderAll();
+
+        // Atualizar a referência à imagem selecionada
+        setSelectedProductImage(newImg);
+
+        // Mostrar mensagem de sucesso
+        setSuccessMessage("Fundo da imagem removido com sucesso!");
+        setTimeout(() => {
+          setSuccessMessage(null);
+        }, 3000);
+
+        setIsRemovingBackground(false);
+      });
+    } catch (error) {
+      console.error("Erro ao remover fundo:", error);
+      alert(
+        "Não foi possível remover o fundo da imagem. Por favor, tente novamente."
+      );
+      setIsRemovingBackground(false);
     }
   };
 
@@ -1206,6 +1390,19 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
                     )}
                   </Button>
                 </div>
+
+                {/* Botão para remover fundo da imagem */}
+                {selectedProductImage && (
+                  <button
+                    onClick={handleRemoveBackgroundImage}
+                    disabled={isRemovingBackground}
+                    className='hover:bg-primary-green-dark mt-2 rounded-md bg-primary-green px-3 py-1 text-sm text-primary-black disabled:opacity-50'
+                  >
+                    {isRemovingBackground
+                      ? "Removendo..."
+                      : "Remover Fundo da Imagem"}
+                  </button>
+                )}
 
                 {successMessage && (
                   <div

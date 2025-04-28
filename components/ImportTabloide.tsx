@@ -15,6 +15,17 @@ const ImportTabloide = ({ onProductsFound }: ImportTabloideProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [importStatus, setImportStatus] = useState<string>("");
   const [isSearching, setIsSearching] = useState(false);
+  const DEFAULT_IMAGE =
+    "https://thumb.ac-illust.com/b1/b170870007dfa419295d949814474ab2_t.jpeg";
+
+  const checkImageExists = async (url: string): Promise<boolean> => {
+    try {
+      const response = await fetch(url, { method: "HEAD" });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  };
 
   const handleFileUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -202,21 +213,23 @@ const ImportTabloide = ({ onProductsFound }: ImportTabloideProps) => {
       const data = await response.json();
       console.log(`Retornados ${data.length} produtos da API`);
 
-      // Merge API data with tabloide prices
-      const productsWithPrices = data.map((product: any) => {
+      // Merge API data with tabloide prices and handle default images
+      const productsWithPricesAndImages = data.map((product: any) => {
         const tabloidData = productsData.find(
           (p) => p.barcode === product.codauxiliar
         );
+
         return {
           ...product,
           preco_tabloide: tabloidData?.preco_tabloide,
+          link_imagem: product.link_imagem || DEFAULT_IMAGE,
         };
       });
 
-      onProductsFound(productsWithPrices);
+      onProductsFound(productsWithPricesAndImages);
       setImportStatus(
-        productsWithPrices.length > 0
-          ? `Importação concluída: ${productsWithPrices.length} produtos encontrados`
+        productsWithPricesAndImages.length > 0
+          ? `Importação concluída: ${productsWithPricesAndImages.length} produtos encontrados`
           : "Nenhum produto encontrado para os códigos fornecidos"
       );
     } catch (error) {

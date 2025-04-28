@@ -21,7 +21,7 @@ const ActiveUsers = () => {
   // Componente simplificado após a remoção do Liveblocks
   return (
     <div className='flex items-center justify-center gap-1'>
-      <Avatar name='Você' otherStyles='border-[3px] border-primary-green' />
+      {/* <Avatar name='Você' otherStyles='border-[3px] border-primary-green' /> */}
     </div>
   );
 };
