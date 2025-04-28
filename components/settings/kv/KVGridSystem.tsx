@@ -645,8 +645,53 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
 
     editorCanvas.discardActiveObject();
 
-    // Limpar canvas primeiro
-    clearCanvas();
+    // Armazenar produtos e elementos existentes antes de limpar o canvas
+    const existingCells = editorCanvas
+      .getObjects()
+      .filter((obj) => (obj as any).isGridCell) as GridCell[];
+
+    // Mapeamento de produtos e textos por cellId
+    const contentByCell: Record<
+      string,
+      {
+        productImage?: fabric.Image;
+        description?: fabric.Text;
+        price?: fabric.Text;
+        productData?: any;
+      }
+    > = {};
+
+    // Armazenar os conteúdos de cada célula
+    existingCells.forEach((cell) => {
+      if (!cell.cellId) return;
+
+      contentByCell[cell.cellId!] = {
+        productData: cell.productData,
+      };
+
+      // Encontrar elementos relacionados a esta célula
+      editorCanvas.getObjects().forEach((obj) => {
+        if ((obj as any).cellId === cell.cellId) {
+          const type = (obj as any).elementType;
+          if (type === "productImage" && obj instanceof fabric.Image) {
+            contentByCell[cell.cellId!].productImage = obj;
+          } else if (
+            type === "productDescription" &&
+            obj instanceof fabric.Text
+          ) {
+            contentByCell[cell.cellId!].description = obj;
+          } else if (type === "productPrice" && obj instanceof fabric.Text) {
+            contentByCell[cell.cellId!].price = obj;
+          }
+        }
+      });
+    });
+
+    // Remover todos os elementos existentes exceto as linhas guia
+    const elementsToRemove = editorCanvas
+      .getObjects()
+      .filter((obj) => (obj as any)._guideType !== "line");
+    elementsToRemove.forEach((obj) => editorCanvas.remove(obj));
 
     // Remover guias existentes
     const existingGuides = editorCanvas
@@ -664,12 +709,28 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
     const offsetX = (CANVAS_WIDTH - scaledWidth) / 2;
     const offsetY = (CANVAS_HEIGHT - scaledHeight) / 2;
 
+    // Criar células da grid e mapeamento de posições antigas para novas
+    const cellPositionMap: Record<
+      string,
+      {
+        oldId: string;
+        newId: string;
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+      }
+    > = {};
+
     // Criar células da grid
     for (let row = 0; row < layout.rows; row++) {
       for (let col = 0; col < layout.cols; col++) {
+        const cellLeft = offsetX + col * cellWidth + cellWidth / 2;
+        const cellTop = offsetY + row * cellHeight + cellHeight / 2;
+
         const cell = new fabric.Rect({
-          left: offsetX + col * cellWidth + cellWidth / 2,
-          top: offsetY + row * cellHeight + cellHeight / 2,
+          left: cellLeft,
+          top: cellTop,
           width: cellWidth - gridGap,
           height: cellHeight - gridGap,
           fill: "rgba(200, 200, 200, 0.5)",
@@ -687,8 +748,32 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
         (cell as any).type = "rect";
         (cell as any).isGridCell = true;
 
-        console.log(`Célula de grid criada [${row},${col}] com ID: ${cellId}`);
+        // Mapear índice de célula para posição
+        const cellIndex = row * layout.cols + col;
+        if (
+          cellIndex < existingCells.length &&
+          existingCells[cellIndex].cellId
+        ) {
+          const oldCellId = existingCells[cellIndex].cellId!;
+          cellPositionMap[oldCellId] = {
+            oldId: oldCellId,
+            newId: cellId,
+            left: cellLeft,
+            top: cellTop,
+            width: cellWidth - gridGap,
+            height: cellHeight - gridGap,
+          };
 
+          // Transferir dados do produto para a nova célula
+          if (
+            contentByCell[oldCellId] &&
+            contentByCell[oldCellId].productData
+          ) {
+            cell.productData = contentByCell[oldCellId].productData;
+          }
+        }
+
+        console.log(`Célula de grid criada [${row},${col}] com ID: ${cellId}`);
         editorCanvas.add(cell);
       }
     }
@@ -720,6 +805,148 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
       (line as any)._guideType = "line";
       editorCanvas.add(line);
     }
+
+    // Restaurar conteúdo de produtos nas novas células
+    Object.keys(cellPositionMap).forEach((oldCellId) => {
+      const mappedCell = cellPositionMap[oldCellId];
+      const content = contentByCell[oldCellId];
+
+      if (!content) return;
+
+      const newCellLeft = mappedCell.left;
+      const newCellTop = mappedCell.top;
+      const newCellWidth = mappedCell.width;
+      const newCellHeight = mappedCell.height;
+
+      // Definir as regiões para cada elemento
+      const imageRegionHeight = newCellHeight * 0.6; // 60% para imagem
+      const descRegionHeight = newCellHeight * 0.25; // 25% para descrição
+      const priceRegionHeight = newCellHeight * 0.15; // 15% para preço
+
+      // Calcular posições verticais
+      const cellTopEdge = newCellTop - newCellHeight / 2;
+      const imageTop = cellTopEdge + imageRegionHeight / 2;
+      const descTop = cellTopEdge + imageRegionHeight + descRegionHeight / 2;
+      const priceTop =
+        cellTopEdge +
+        imageRegionHeight +
+        descRegionHeight +
+        priceRegionHeight / 2;
+
+      // Restaurar imagem, se existir
+      if (content.productImage) {
+        fabric.Image.fromURL(
+          content.productImage.getSrc(),
+          (newImg) => {
+            if (!editorCanvas) return;
+
+            // Calcular nova escala para caber na célula
+            const maxWidth = newCellWidth * 0.9;
+            const maxHeight = imageRegionHeight * 0.9;
+            const scale = Math.min(
+              maxWidth / content.productImage!.width!,
+              maxHeight / content.productImage!.height!
+            );
+
+            // Configurar a nova imagem
+            (newImg as any).cellId = mappedCell.newId;
+            (newImg as any).elementType = "productImage";
+
+            newImg.set({
+              left: newCellLeft,
+              top: imageTop,
+              originX: "center",
+              originY: "center",
+              scaleX: scale,
+              scaleY: scale,
+              selectable: true,
+            });
+
+            editorCanvas.add(newImg);
+
+            // Atualizar a referência da imagem selecionada se aplicável
+            if (
+              selectedProductImage &&
+              (selectedProductImage as any).cellId === oldCellId
+            ) {
+              setSelectedProductImage(newImg);
+            }
+          },
+          { crossOrigin: "anonymous" }
+        );
+      }
+
+      // Restaurar descrição, se existir
+      if (content.description) {
+        const maxLineWidth = newCellWidth * 0.85;
+        const fontSize = Math.min(24, descRegionHeight * 0.4);
+
+        // Obter o texto original
+        const originalText = content.description.text || "";
+
+        // Configurar descrição para ajustar automaticamente ao tamanho da célula
+        const newDesc = new fabric.Textbox(originalText, {
+          left: newCellLeft,
+          top: descTop,
+          fontSize: fontSize,
+          fill:
+            content.description.get && content.description.get("fill")
+              ? content.description.get("fill")
+              : "#ffffff",
+          fontFamily:
+            content.description.get && content.description.get("fontFamily")
+              ? content.description.get("fontFamily")
+              : "Arial",
+          fontWeight:
+            content.description.get && content.description.get("fontWeight")
+              ? content.description.get("fontWeight")
+              : "700",
+          originX: "center",
+          originY: "center",
+          textAlign: "center",
+          width: maxLineWidth,
+        });
+
+        // Salvar cellId e outros dados no elemento de texto
+        (newDesc as any).cellId = mappedCell.newId;
+        (newDesc as any).elementType = "productDescription";
+
+        editorCanvas.add(newDesc);
+      }
+
+      // Restaurar preço, se existir
+      if (content.price) {
+        const priceText = content.price.text || "";
+        const priceFill =
+          content.price.get && content.price.get("fill")
+            ? content.price.get("fill")
+            : "#ffffff";
+        const priceFontFamily =
+          content.price.get && content.price.get("fontFamily")
+            ? content.price.get("fontFamily")
+            : "Arial";
+        const priceFontWeight =
+          content.price.get && content.price.get("fontWeight")
+            ? content.price.get("fontWeight")
+            : "700";
+
+        const newPrice = new fabric.Text(priceText, {
+          left: newCellLeft,
+          top: priceTop,
+          fontSize: Math.min(28, priceRegionHeight * 0.6),
+          fill: priceFill,
+          fontFamily: priceFontFamily,
+          fontWeight: priceFontWeight,
+          originX: "center",
+          originY: "center",
+        });
+
+        (newPrice as any).cellId = mappedCell.newId;
+        (newPrice as any).elementType = "productPrice";
+
+        editorCanvas.add(newPrice);
+      }
+    });
 
     editorCanvas.renderAll();
   };
@@ -922,7 +1149,7 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
             }
 
             // Criar o texto com quebras de linha - usar Text em vez de Textbox para evitar erro de tipo
-            const descriptionText = new fabric.Text(formattedText, {
+            const descriptionText = new fabric.Textbox(formattedText, {
               left: cellLeft,
               top: descTop,
               fontSize: fontSize,
@@ -1164,282 +1391,406 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
 
   return (
     <KVModal isOpen={isOpen} onClose={onClose}>
-      <div className='flex flex-col gap-4 px-5 pt-4'>
-        <h1 className='text-xl font-bold text-primary-grey-300'>
-          Gerador de Grid KV
-        </h1>
+      <div className='flex flex-col gap-6 px-5 py-5'>
+        <div className='flex items-center justify-between'>
+          <h1 className='text-xl font-bold text-primary-grey-300'>
+            Gerador de Grid KV
+          </h1>
+          <button
+            onClick={handleExportGrid}
+            className='flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700'
+          >
+            <svg
+              xmlns='http://www.w3.org/2000/svg'
+              width='16'
+              height='16'
+              viewBox='0 0 24 24'
+              fill='none'
+              stroke='currentColor'
+              strokeWidth='2'
+              strokeLinecap='round'
+              strokeLinejoin='round'
+            >
+              <path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'></path>
+              <polyline points='7 10 12 15 17 10'></polyline>
+              <line x1='12' y1='15' x2='12' y2='3'></line>
+            </svg>
+            Exportar Grid
+          </button>
+        </div>
 
-        <div className='flex gap-8'>
-          <div className='flex max-h-[80vh] flex-col gap-4 overflow-y-auto pr-4'>
-            <div className='flex flex-col gap-4 rounded-lg bg-primary-black p-4'>
-              <h3 className='text-lg font-semibold text-primary-grey-300'>
-                Layouts Pré-definidos
+        <div className='flex gap-6'>
+          {/* Left sidebar with controls */}
+          <div className='flex max-h-[80vh] w-[350px] flex-col gap-5 overflow-y-auto pr-2'>
+            {/* Background Section */}
+            <div className='rounded-lg border border-gray-800 bg-primary-black p-4 shadow-md'>
+              <h3 className='mb-3 flex items-center gap-2 text-base font-semibold text-primary-grey-300'>
+                <svg
+                  xmlns='http://www.w3.org/2000/svg'
+                  width='18'
+                  height='18'
+                  viewBox='0 0 24 24'
+                  fill='none'
+                  stroke='currentColor'
+                  strokeWidth='2'
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                >
+                  <rect x='3' y='3' width='18' height='18' rx='2' ry='2'></rect>
+                  <circle cx='8.5' cy='8.5' r='1.5'></circle>
+                  <polyline points='21 15 16 10 5 21'></polyline>
+                </svg>
+                Plano de Fundo
               </h3>
 
-              <div className='grid grid-cols-3 gap-2'>
-                <button
-                  onClick={() => applyGridLayout("twoByTwo")}
-                  className={`flex flex-col items-center justify-center rounded-md p-2 text-xs ${selectedLayout === "twoByTwo" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 text-white"}`}
-                >
-                  <Grid size={24} />
-                  <span>2x2</span>
-                </button>
-
-                <button
-                  onClick={() => applyGridLayout("threeByThree")}
-                  className={`flex flex-col items-center justify-center rounded-md p-2 text-xs ${selectedLayout === "threeByThree" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 text-white"}`}
-                >
-                  <Grid size={24} />
-                  <span>3x3</span>
-                </button>
-
-                <button
-                  onClick={() => applyGridLayout("twoByOne")}
-                  className={`flex flex-col items-center justify-center rounded-md p-2 text-xs ${selectedLayout === "twoByOne" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 text-white"}`}
-                >
-                  <Columns size={24} />
-                  <span>2x1</span>
-                </button>
-
-                <button
-                  onClick={() => applyGridLayout("oneByTwo")}
-                  className={`flex flex-col items-center justify-center rounded-md p-2 text-xs ${selectedLayout === "oneByTwo" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 text-white"}`}
-                >
-                  <Rows size={24} />
-                  <span>1x2</span>
-                </button>
-
-                <button
-                  onClick={() => applyGridLayout("threeByOne")}
-                  className={`flex flex-col items-center justify-center rounded-md p-2 text-xs ${selectedLayout === "threeByOne" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 text-white"}`}
-                >
-                  <Columns size={24} />
-                  <span>3x1</span>
-                </button>
-
-                <button
-                  onClick={() => applyGridLayout("oneByThree")}
-                  className={`flex flex-col items-center justify-center rounded-md p-2 text-xs ${selectedLayout === "oneByThree" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 text-white"}`}
-                >
-                  <Rows size={24} />
-                  <span>1x3</span>
-                </button>
-              </div>
-
-              {/* Adicionar seção para grid personalizada */}
-              <div className='border-primary-grey-600 mt-6 border-t pt-4'>
-                <h4 className='mb-3 text-sm font-semibold text-primary-grey-300'>
-                  Grid Personalizada
-                </h4>
-
-                <div className='mb-3 flex gap-4'>
-                  <div className='flex flex-1 flex-col gap-1'>
-                    <label className='text-xs text-primary-grey-300'>
-                      Colunas
-                    </label>
-                    <div className='flex items-center'>
-                      <input
-                        type='number'
-                        min='1'
-                        max='10'
-                        value={customCols}
-                        onChange={(e) =>
-                          setCustomCols(parseInt(e.target.value) || 1)
-                        }
-                        className='bg-primary-grey-800 border-primary-grey-600 w-full rounded-md px-2 py-1 text-sm text-primary-grey-300'
-                      />
-                    </div>
-                  </div>
-
-                  <div className='flex flex-1 flex-col gap-1'>
-                    <label className='text-xs text-primary-grey-300'>
-                      Linhas
-                    </label>
-                    <div className='flex items-center'>
-                      <input
-                        type='number'
-                        min='1'
-                        max='10'
-                        value={customRows}
-                        onChange={(e) =>
-                          setCustomRows(parseInt(e.target.value) || 1)
-                        }
-                        className='bg-primary-grey-800 border-primary-grey-600 w-full rounded-md px-2 py-1 text-sm text-primary-grey-300'
-                      />
-                    </div>
-                  </div>
+              <div className='flex flex-col gap-3'>
+                <div className='flex flex-col gap-2'>
+                  <label
+                    htmlFor='background-upload'
+                    className='flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700'
+                  >
+                    <Plus size={16} />
+                    {backgroundImage
+                      ? "Trocar Background"
+                      : "Adicionar Background"}
+                  </label>
+                  <input
+                    id='background-upload'
+                    type='file'
+                    accept='image/*'
+                    className='hidden'
+                    onChange={handleBackgroundUpload}
+                  />
                 </div>
-
-                <button
-                  onClick={applyCustomGridLayout}
-                  className={`flex w-full items-center justify-center rounded-md p-2 text-sm ${selectedLayout === "custom" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 hover:bg-primary-grey-700 text-white"}`}
-                >
-                  <Grid size={16} className='mr-2' />
-                  <span>
-                    Criar Grid {customCols}x{customRows}
-                  </span>
-                </button>
-
-                <p className='text-primary-grey-400 mt-2 text-xs'>
-                  Crie um layout de grid personalizado definindo o número de
-                  colunas e linhas. Valores entre 1 e 10 são aceitos.
-                </p>
-              </div>
-
-              <div className='mt-4 flex flex-col gap-2'>
-                <label className='text-sm text-primary-grey-300'>
-                  Espaçamento entre células (px)
-                </label>
-                <input
-                  type='range'
-                  min='0'
-                  max='50'
-                  value={gridGap}
-                  onChange={handleGridGapChange}
-                  className='w-full'
-                />
-                <span className='text-xs text-primary-grey-300'>
-                  {gridGap}px
-                </span>
-              </div>
-
-              {/* Adicionar controle de escala da grid */}
-              <div className='mt-4 flex flex-col gap-2'>
-                <label className='text-sm text-primary-grey-300'>
-                  Escala da grid
-                </label>
-                <input
-                  type='range'
-                  min='0.5'
-                  max='1'
-                  step='0.05'
-                  value={gridScale}
-                  onChange={handleGridScaleChange}
-                  className='w-full'
-                />
-                <span className='text-xs text-primary-grey-300'>
-                  {Math.round(gridScale * 100)}%
-                </span>
-              </div>
-            </div>
-
-            <div className='flex flex-col gap-4 rounded-lg bg-primary-black p-4'>
-              <h3 className='text-lg font-semibold text-primary-grey-300'>
-                Background
-              </h3>
-
-              <div className='flex flex-col gap-2'>
-                <label
-                  htmlFor='background-upload'
-                  className='bg-primary-blue hover:bg-primary-blue-dark flex cursor-pointer items-center justify-center gap-2 rounded-md px-4 py-2 text-sm text-white'
-                >
-                  <Plus size={16} />
-                  {backgroundImage
-                    ? "Trocar Background"
-                    : "Adicionar Background"}
-                </label>
-                <input
-                  id='background-upload'
-                  type='file'
-                  accept='image/*'
-                  className='hidden'
-                  onChange={handleBackgroundUpload}
-                />
 
                 {backgroundImage && (
                   <button
                     onClick={handleRemoveBackground}
-                    className='mt-2 flex items-center justify-center gap-2 rounded-md bg-red-500 px-4 py-2 text-sm text-white hover:bg-red-600'
+                    className='flex items-center justify-center gap-2 rounded-md border border-red-500 bg-transparent px-4 py-2 text-sm font-medium text-red-500 transition-colors hover:bg-red-500/10'
                   >
+                    <svg
+                      xmlns='http://www.w3.org/2000/svg'
+                      width='16'
+                      height='16'
+                      viewBox='0 0 24 24'
+                      fill='none'
+                      stroke='currentColor'
+                      strokeWidth='2'
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                    >
+                      <path d='M3 6h18'></path>
+                      <path d='M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'></path>
+                      <path d='M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'></path>
+                    </svg>
                     Remover Background
                   </button>
                 )}
-
-                <p className='mt-2 text-xs text-primary-grey-300'>
-                  Adicione uma imagem de fundo para o seu grid. Recomendamos
-                  imagens de pelo menos 1080x1920px.
-                </p>
               </div>
             </div>
 
-            {showProductSearch ? (
-              <div className='flex flex-col gap-4 rounded-lg bg-primary-black p-4'>
-                <h3 className='text-lg font-semibold text-primary-grey-300'>
-                  Pesquisar Produto
-                </h3>
-                <div className='flex gap-2'>
-                  <Input
-                    type='text'
-                    value={searchCode}
-                    onChange={(e) => setSearchCode(e.target.value)}
-                    placeholder='Código do produto'
-                    className='bg-primary-grey-800 border-primary-grey-600 text-primary-grey-300'
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSearchProduct();
-                    }}
-                  />
-                  <Button
-                    onClick={handleSearchProduct}
-                    disabled={isSearching}
-                    className='bg-primary-green text-primary-black hover:bg-primary-green/90'
-                  >
-                    {isSearching ? (
-                      <div className='h-4 w-4 animate-spin rounded-full border-2 border-primary-black border-t-transparent'></div>
-                    ) : (
-                      <Search size={16} />
-                    )}
-                  </Button>
+            {/* Grid Layout Section */}
+            <div className='rounded-lg border border-gray-800 bg-primary-black p-4 shadow-md'>
+              <h3 className='mb-3 flex items-center gap-2 text-base font-semibold text-primary-grey-300'>
+                <Grid size={18} />
+                Layout da Grid
+              </h3>
+
+              <div className='space-y-4'>
+                <div>
+                  <p className='text-primary-grey-400 mb-2 text-xs font-medium'>
+                    Layouts pré-definidos
+                  </p>
+                  <div className='grid grid-cols-3 gap-2'>
+                    <button
+                      onClick={() => applyGridLayout("twoByTwo")}
+                      className={`flex flex-col items-center justify-center rounded-md p-2 text-xs transition-colors ${selectedLayout === "twoByTwo" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 hover:bg-primary-grey-700 text-white"}`}
+                    >
+                      <Grid size={20} />
+                      <span>2x2</span>
+                    </button>
+
+                    <button
+                      onClick={() => applyGridLayout("threeByThree")}
+                      className={`flex flex-col items-center justify-center rounded-md p-2 text-xs transition-colors ${selectedLayout === "threeByThree" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 hover:bg-primary-grey-700 text-white"}`}
+                    >
+                      <Grid size={20} />
+                      <span>3x3</span>
+                    </button>
+
+                    <button
+                      onClick={() => applyGridLayout("twoByOne")}
+                      className={`flex flex-col items-center justify-center rounded-md p-2 text-xs transition-colors ${selectedLayout === "twoByOne" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 hover:bg-primary-grey-700 text-white"}`}
+                    >
+                      <Columns size={20} />
+                      <span>2x1</span>
+                    </button>
+
+                    <button
+                      onClick={() => applyGridLayout("oneByTwo")}
+                      className={`flex flex-col items-center justify-center rounded-md p-2 text-xs transition-colors ${selectedLayout === "oneByTwo" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 hover:bg-primary-grey-700 text-white"}`}
+                    >
+                      <Rows size={20} />
+                      <span>1x2</span>
+                    </button>
+
+                    <button
+                      onClick={() => applyGridLayout("threeByOne")}
+                      className={`flex flex-col items-center justify-center rounded-md p-2 text-xs transition-colors ${selectedLayout === "threeByOne" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 hover:bg-primary-grey-700 text-white"}`}
+                    >
+                      <Columns size={20} />
+                      <span>3x1</span>
+                    </button>
+
+                    <button
+                      onClick={() => applyGridLayout("oneByThree")}
+                      className={`flex flex-col items-center justify-center rounded-md p-2 text-xs transition-colors ${selectedLayout === "oneByThree" ? "bg-primary-green text-primary-black" : "bg-primary-grey-800 hover:bg-primary-grey-700 text-white"}`}
+                    >
+                      <Rows size={20} />
+                      <span>1x3</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* Botão para remover fundo da imagem */}
-                {selectedProductImage && (
-                  <button
-                    onClick={handleRemoveBackgroundImage}
-                    disabled={isRemovingBackground}
-                    className='hover:bg-primary-green-dark mt-2 rounded-md bg-primary-green px-3 py-1 text-sm text-primary-black disabled:opacity-50'
-                  >
-                    {isRemovingBackground
-                      ? "Removendo..."
-                      : "Remover Fundo da Imagem"}
-                  </button>
-                )}
+                <div className='mt-3 border-t border-gray-800 pt-4'>
+                  <p className='text-primary-grey-400 mb-3 text-xs font-medium'>
+                    Grid personalizada
+                  </p>
+                  <div className='mb-3 flex gap-3'>
+                    <div className='flex flex-1 flex-col'>
+                      <label className='mb-1 text-xs text-primary-grey-300'>
+                        Colunas
+                      </label>
+                      <div className='flex items-center'>
+                        <input
+                          type='number'
+                          min='1'
+                          max='10'
+                          value={customCols}
+                          onChange={(e) =>
+                            setCustomCols(parseInt(e.target.value) || 1)
+                          }
+                          className='bg-primary-grey-800 w-full rounded-md border border-gray-700 px-3 py-1.5 text-sm text-primary-grey-300 focus:border-blue-500 focus:outline-none'
+                        />
+                      </div>
+                    </div>
 
-                {successMessage && (
-                  <div
-                    className='mt-2 rounded-md bg-green-500/20 p-2 text-sm text-green-500'
-                    style={{ animation: "fadeIn 0.3s ease-in-out" }}
-                  >
-                    {successMessage}
+                    <div className='flex flex-1 flex-col'>
+                      <label className='mb-1 text-xs text-primary-grey-300'>
+                        Linhas
+                      </label>
+                      <div className='flex items-center'>
+                        <input
+                          type='number'
+                          min='1'
+                          max='10'
+                          value={customRows}
+                          onChange={(e) =>
+                            setCustomRows(parseInt(e.target.value) || 1)
+                          }
+                          className='bg-primary-grey-800 w-full rounded-md border border-gray-700 px-3 py-1.5 text-sm text-primary-grey-300 focus:border-blue-500 focus:outline-none'
+                        />
+                      </div>
+                    </div>
                   </div>
-                )}
 
-                <div className='bg-primary-grey-800/50 mt-2 rounded-md p-2'>
-                  <p className='mb-1 text-xs text-primary-grey-300'>
-                    <span className='font-semibold'>Célula selecionada:</span>{" "}
-                    {selectedCell
-                      ? `#${selectedCell.cellId?.substring(0, 8)}...`
-                      : ""}
+                  <button
+                    onClick={applyCustomGridLayout}
+                    className={`flex w-full items-center justify-center rounded-md p-2 text-sm transition-colors ${selectedLayout === "custom" ? "bg-primary-green text-primary-black" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                  >
+                    <Grid size={16} className='mr-2' />
+                    <span>
+                      Criar Grid {customCols}x{customRows}
+                    </span>
+                  </button>
+                </div>
+
+                <div className='mt-4 border-t border-gray-800 pt-4'>
+                  <p className='text-primary-grey-400 mb-2 text-xs font-medium'>
+                    Ajustes da Grid
                   </p>
-                  <p className='text-xs text-primary-grey-300'>
-                    Digite o código do produto e clique em pesquisar para
-                    adicionar à célula selecionada.
-                  </p>
+
+                  <div className='mb-4'>
+                    <div className='mb-1 flex justify-between'>
+                      <label className='text-xs text-primary-grey-300'>
+                        Espaçamento ({gridGap}px)
+                      </label>
+                      <span className='text-primary-grey-400 text-xs'>
+                        {gridGap}px
+                      </span>
+                    </div>
+                    <input
+                      type='range'
+                      min='0'
+                      max='50'
+                      value={gridGap}
+                      onChange={handleGridGapChange}
+                      className='w-full accent-blue-500'
+                    />
+                  </div>
+
+                  <div className='mb-2'>
+                    <div className='mb-1 flex justify-between'>
+                      <label className='text-xs text-primary-grey-300'>
+                        Escala da grid
+                      </label>
+                      <span className='text-primary-grey-400 text-xs'>
+                        {Math.round(gridScale * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type='range'
+                      min='0.5'
+                      max='1'
+                      step='0.05'
+                      value={gridScale}
+                      onChange={handleGridScaleChange}
+                      className='w-full accent-blue-500'
+                    />
+                  </div>
+
+                  <div className='mt-3 space-y-2'>
+                    <div className='flex items-center'>
+                      <input
+                        type='checkbox'
+                        id='showGuidelines'
+                        checked={showGuidelines}
+                        onChange={toggleGuidelines}
+                        className='h-4 w-4 rounded border-gray-400 accent-blue-500'
+                      />
+                      <label
+                        htmlFor='showGuidelines'
+                        className='ml-2 text-sm text-primary-grey-300'
+                      >
+                        Mostrar linhas guia
+                      </label>
+                    </div>
+
+                    <div className='flex items-center'>
+                      <input
+                        type='checkbox'
+                        id='snapToGrid'
+                        checked={snapToGrid}
+                        onChange={(e) => setSnapToGrid(e.target.checked)}
+                        className='h-4 w-4 rounded border-gray-400 accent-blue-500'
+                      />
+                      <label
+                        htmlFor='snapToGrid'
+                        className='ml-2 text-sm text-primary-grey-300'
+                      >
+                        Ativar snap to grid
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Product Search Section */}
+            {showProductSearch ? (
+              <div className='rounded-lg border border-gray-800 bg-primary-black p-4 shadow-md'>
+                <h3 className='mb-3 flex items-center gap-2 text-base font-semibold text-primary-grey-300'>
+                  <Search size={18} />
+                  Pesquisar Produto
+                </h3>
+
+                <div className='space-y-3'>
+                  <div className='flex gap-2'>
+                    <Input
+                      type='text'
+                      value={searchCode}
+                      onChange={(e) => setSearchCode(e.target.value)}
+                      placeholder='Código do produto'
+                      className='bg-primary-grey-800 flex-grow rounded-md border border-gray-700 px-3 py-1.5 text-sm text-primary-grey-300 focus:border-blue-500 focus:outline-none'
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSearchProduct();
+                      }}
+                    />
+                    <Button
+                      onClick={handleSearchProduct}
+                      disabled={isSearching}
+                      className='min-w-[40px] rounded-md bg-primary-green text-primary-black hover:bg-primary-green/90 disabled:opacity-50'
+                    >
+                      {isSearching ? (
+                        <div className='h-4 w-4 animate-spin rounded-full border-2 border-primary-black border-t-transparent'></div>
+                      ) : (
+                        <Search size={16} />
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Botão para remover fundo da imagem */}
+                  {selectedProductImage && (
+                    <button
+                      onClick={handleRemoveBackgroundImage}
+                      disabled={isRemovingBackground}
+                      className='flex w-full items-center justify-center gap-2 rounded-md bg-primary-green px-3 py-2 text-sm text-primary-black transition-colors hover:bg-primary-green/90 disabled:opacity-50'
+                    >
+                      {isRemovingBackground ? (
+                        <>
+                          <div className='h-4 w-4 animate-spin rounded-full border-2 border-primary-black border-t-transparent'></div>
+                          <span>Removendo fundo...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg
+                            xmlns='http://www.w3.org/2000/svg'
+                            width='16'
+                            height='16'
+                            viewBox='0 0 24 24'
+                            fill='none'
+                            stroke='currentColor'
+                            strokeWidth='2'
+                            strokeLinecap='round'
+                            strokeLinejoin='round'
+                          >
+                            <path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7'></path>
+                            <path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z'></path>
+                          </svg>
+                          <span>Remover Fundo da Imagem</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {successMessage && (
+                    <div
+                      className='rounded-md bg-green-500/20 p-2 text-sm text-green-500'
+                      style={{ animation: "fadeIn 0.3s ease-in-out" }}
+                    >
+                      {successMessage}
+                    </div>
+                  )}
+
+                  <div className='bg-primary-grey-800/50 rounded-md p-3'>
+                    <p className='mb-2 text-xs text-primary-grey-300'>
+                      <span className='font-semibold'>Célula selecionada:</span>{" "}
+                      {selectedCell
+                        ? `#${selectedCell.cellId?.substring(0, 8)}...`
+                        : "Nenhuma"}
+                    </p>
+                    <p className='text-primary-grey-400 text-xs'>
+                      Digite o código do produto e clique em pesquisar para
+                      adicionar à célula selecionada.
+                    </p>
+                  </div>
                 </div>
               </div>
             ) : (
-              <div className='border-primary-grey-600 flex flex-col gap-4 rounded-lg border border-dashed bg-primary-black p-4'>
-                <h3 className='text-lg font-semibold text-primary-grey-300'>
+              <div className='rounded-lg border border-dashed border-gray-800 bg-primary-black p-4 shadow-md'>
+                <h3 className='mb-3 flex items-center gap-2 text-base font-semibold text-primary-grey-300'>
+                  <Search size={18} />
                   Adicionar Produtos
                 </h3>
-                <div className='flex flex-col items-center justify-center py-4'>
+                <div className='flex flex-col items-center justify-center py-6 text-center'>
                   <div className='bg-primary-grey-800 mb-3 rounded-full p-3'>
                     <Search size={24} className='text-primary-grey-300' />
                   </div>
-                  <p className='mb-1 text-center text-sm text-primary-grey-300'>
+                  <p className='mb-2 text-sm text-primary-grey-300'>
                     Clique em uma célula da grid para pesquisar e adicionar
                     produtos
                   </p>
-                  <p className='text-primary-grey-400 text-center text-xs'>
+                  <p className='text-primary-grey-400 text-xs'>
                     Cada célula pode conter uma imagem, descrição e preço de
                     produto
                   </p>
@@ -1447,84 +1798,71 @@ const KVGridSystem = ({ isOpen, onClose }: KVGridSystemProps) => {
               </div>
             )}
 
-            <div className='flex flex-col gap-4 rounded-lg bg-primary-black p-4'>
-              <h3 className='text-lg font-semibold text-primary-grey-300'>
-                Configuração da Grid
-              </h3>
+            {/* Element Editor Section (only when element is selected) */}
+            {selectedElement && (
+              <div className='rounded-lg border border-gray-800 bg-primary-black p-4 shadow-md'>
+                <h3 className='mb-3 flex items-center gap-2 text-base font-semibold text-primary-grey-300'>
+                  <svg
+                    xmlns='http://www.w3.org/2000/svg'
+                    width='18'
+                    height='18'
+                    viewBox='0 0 24 24'
+                    fill='none'
+                    stroke='currentColor'
+                    strokeWidth='2'
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                  >
+                    <path d='M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7'></path>
+                    <path d='M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z'></path>
+                  </svg>
+                  Editar Elemento
+                </h3>
 
-              <div className='flex gap-2'>
-                <button
-                  onClick={handleAddGridCell}
-                  className='flex items-center justify-center gap-2 rounded-md bg-primary-green px-4 py-2 text-sm font-medium text-primary-black hover:bg-primary-green/90'
-                >
-                  <Plus size={16} />
-                  Adicionar célula
-                </button>
-
-                <button
-                  onClick={clearCanvas}
-                  className='flex items-center justify-center gap-2 rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600'
-                >
-                  Limpar tudo
-                </button>
-              </div>
-
-              {!showProductSearch && selectedElement && (
-                <button
-                  onClick={() => {
-                    console.log("Forçando exibição do painel de pesquisa");
-                    setShowProductSearch(true);
-                    setSelectedCell(selectedElement as GridCell);
-                  }}
-                  className='mt-2 flex items-center justify-center gap-2 rounded-md bg-blue-500 px-4 py-2 text-sm font-medium text-white hover:bg-blue-600'
-                >
-                  <Search size={16} />
-                  Pesquisar produto para esta célula
-                </button>
-              )}
-
-              <div className='mt-2 flex items-center gap-2'>
-                <input
-                  type='checkbox'
-                  checked={showGuidelines}
-                  onChange={toggleGuidelines}
-                  className='h-4 w-4'
+                <KVElementEditor
+                  selectedElement={selectedElement}
+                  elementStyles={elementStyles}
+                  onStyleChange={handleStyleChange}
                 />
-                <label className='text-sm text-primary-grey-300'>
-                  Mostrar linhas guia
-                </label>
               </div>
+            )}
 
-              <div className='flex items-center gap-2'>
-                <input
-                  type='checkbox'
-                  checked={snapToGrid}
-                  onChange={(e) => setSnapToGrid(e.target.checked)}
-                  className='h-4 w-4'
-                />
-                <label className='text-sm text-primary-grey-300'>
-                  Ativar snap to grid
-                </label>
-              </div>
+            {/* Add cell button */}
+            <button
+              onClick={handleAddGridCell}
+              className='mt-1 flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700'
+            >
+              <Plus size={16} />
+              Adicionar célula manualmente
+            </button>
 
-              <div className='mt-4'>
-                <button
-                  onClick={handleExportGrid}
-                  className='hover:bg-primary-blue-dark bg-primary-blue rounded-md px-4 py-2 text-sm text-white'
-                >
-                  Exportar Grid
-                </button>
-              </div>
-            </div>
-
-            <KVElementEditor
-              selectedElement={selectedElement}
-              elementStyles={elementStyles}
-              onStyleChange={handleStyleChange}
-            />
+            <button
+              onClick={clearCanvas}
+              className='mb-2 flex items-center justify-center gap-2 rounded-md border border-red-500 bg-transparent px-4 py-2 text-sm font-medium text-red-500 transition-colors hover:bg-red-500/10'
+            >
+              <svg
+                xmlns='http://www.w3.org/2000/svg'
+                width='16'
+                height='16'
+                viewBox='0 0 24 24'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth='2'
+                strokeLinecap='round'
+                strokeLinejoin='round'
+              >
+                <path d='M3 6h18'></path>
+                <path d='M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'></path>
+                <path d='M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2'></path>
+                <path d='M10 11v6'></path>
+                <path d='M14 11v6'></path>
+              </svg>
+              Limpar tudo
+            </button>
           </div>
 
-          <div className='sticky top-0'>
+          {/* Canvas Area */}
+          <div className='sticky top-0 flex-grow'>
             <KVCanvas
               editorCanvasRef={editorCanvasRef}
               onCanvasReady={handleCanvasReady}
